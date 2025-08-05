@@ -1,9 +1,38 @@
-import facility
-import customer
-import facilities
-import customers
+import sys
 import solution
 import problem
 
-
 p = problem()
+
+# I) biramo fabriku koja ima najnizu cenu otvaranja po jedinici
+# II) u petlji se biraju korisnici koji imaju najpovoljniji trosak transporta
+
+sorted_facilities = p.facilities.sort_by_cost_capacity_ratio()
+
+while sorted_facilities:
+    if p.customers.total_remaining_demand() == 0:
+        break
+
+    cheapest_facility = sorted_facilities.pop(0)
+    cheapest_facility.open()
+
+    while cheapest_facility.remaining_capacity:
+        min_shipping_cost = sys.maxsize
+        customer_with_min_shipping = None
+
+        #nalazimo korisnika sa najmanjim troskom transporta do facilitya
+        for cust in p.customers.customers_with_unmet_demand():
+            if p.shipping_costs[cust.id, cheapest_facility.id] < min_shipping_cost:
+                min_shipping_cost = p.shipping_costs[cust.id, cheapest_facility.id]
+                customer_with_min_shipping = cust
+
+        if customer_with_min_shipping is None:
+            break;
+
+        assign_amount = min(cheapest_facility.remaining_capacity, customer_with_min_shipping.remaining_demand)
+
+        #oduzimamo iz kapaciteta ono sto je korisnik kupio
+        cheapest_facility.remaining_capacity -= assign_amount
+        #oduzimamo koliko je korisniku potrebno resursa
+        customer_with_min_shipping.remaining_demand -= assign_amount
+
