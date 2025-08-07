@@ -23,7 +23,7 @@ def parse_dzn_file(filename):
                 data[key] = int(value)
     return data
 
-data = parse_dzn_file("instances/wlp01.dzn")
+data = parse_dzn_file("Instances/wlp01.dzn")
 print(data)
 
 # I) biramo fabriku koja ima najnizu cenu otvaranja po jedinici
