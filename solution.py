@@ -1,3 +1,4 @@
+import matplotlib as plt
 class Solution:
     def __init__(self, instance):
         self.instance = instance
@@ -56,6 +57,43 @@ class Solution:
                         return False
 
         return True
+
+    def visualize(self):
+        """
+        Simple 2D visualization:
+        - Facilities are squares
+        - Customers are circles
+        - Lines show assignments
+        """
+        plt.figure(figsize=(8, 6))
+
+        # fabrike
+        for fac in self.instance.facilities:
+            x, y = fac.x, fac.y
+            color = 'green' if fac.id in self.facilities_open else 'red'
+            plt.scatter(x, y, s=200, c=color, marker='s', label=f'Facility {fac.id}' if fac.id == 0 else "")
+            plt.text(x, y + 0.5, f'F{fac.id}', ha='center')
+
+        # kupci
+        for cust in self.instance.customers:
+            x, y = cust.x, cust.y
+            plt.scatter(x, y, s=100, c='blue', marker='o', label=f'Customer {cust.id}' if cust.id == 0 else "")
+            plt.text(x, y + 0.3, f'C{cust.id}', ha='center')
+
+        # assignments
+        for (cust_id, fac_id), amount in self.assignments.items():
+            cust = self.instance.customers.get_by_id(cust_id)
+            fac = self.instance.facilities[fac_id]
+            plt.plot([cust.x, fac.x], [cust.y, fac.y], 'k--', alpha=0.5)
+            mid_x = (cust.x + fac.x) / 2
+            mid_y = (cust.y + fac.y) / 2
+            plt.text(mid_x, mid_y, f'{amount}', color='purple', fontsize=8)
+
+        plt.title(f"Solution Visualization - Total Cost: {self.total_cost():.2f}")
+        plt.xlabel("X")
+        plt.ylabel("Y")
+        plt.grid(True)
+        plt.show()
 
     def print_solution(self):
         print("Assignments:")
