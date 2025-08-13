@@ -1,42 +1,50 @@
 import sys
 import problem
 import solution
+import random
+import heuristics
 
-p = problem()
-sol = solution.Solution(p)
-# I) biramo fabriku koja ima najnizu cenu otvaranja po jedinici
-# II) u petlji se biraju korisnici koji imaju najpovoljniji trosak transporta
+class Solver:
+    def __init__(self, problem_instance):
+        self.heuristics = heuristics.Heuristics(self)
+        self.problem = problem_instance
+        self.solution = solution.Solution(problem_instance)
 
-sorted_facilities = p.facilities.sort_by_cost_capacity_ratio()
+    def has_conflict(self, cust_id, already_assigned_ids):
+        for other_cust_id in already_assigned_ids:
+            if (cust_id, other_cust_id) in self.problem.incompatibilities or \
+                    (other_cust_id, cust_id) in self.problem.incompatibilities:
+                return True
+        return False
 
-while sorted_facilities:
-    if p.customers.total_remaining_demand() == 0:
-        break
+    def _assign_customer_to_facility(self, customer, facility):
+        assign_amount = min(facility.remaining_capacity, customer.remaining_demand)
 
-    cheapest_facility = sorted_facilities.pop(0)
-    cheapest_facility.open()
+        self.solution.add_assignment(customer.id, facility.id, assign_amount)
 
-    while cheapest_facility.remaining_capacity:
-        min_shipping_cost = sys.maxsize
-        customer_with_min_shipping = None
+        facility.remaining_capacity -= assign_amount
+        customer.remaining_demand -= assign_amount
 
-        #nalazimo korisnika sa najmanjim troskom transporta do facilitya
-        for cust in p.customers.customers_with_unmet_demand():
-            if p.shipping_costs[cust.id, cheapest_facility.id] < min_shipping_cost:
-                min_shipping_cost = p.shipping_costs[cust.id, cheapest_facility.id]
-                customer_with_min_shipping = cust
+    def solve_greedy(self):
+        sorted_facilities = self.problem.facilities.sort_by_cost_capacity_ratio()
+        while sorted_facilities:
+            if self.problem.customers.total_remaining_demand() == 0:
+                break
 
-        if customer_with_min_shipping is None:
-            break
+            cheapest_facility = sorted_facilities.pop(0)
+            cheapest_facility.open()
 
-        assign_amount = min(cheapest_facility.remaining_capacity, customer_with_min_shipping.remaining_demand)
+            while cheapest_facility.remaining_capacity:
+                best_customers = self.heuristics.rcl(cheapest_facility, 5)
+                if not best_customers:
+                    break
 
-        sol.add_assignment(customer_with_min_shipping.id, cheapest_facility.id, assign_amount)
+                chosen_customer = random.choice(best_customers)
+                self._assign_customer_to_facility(chosen_customer, cheapest_facility)
 
-        #oduzimamo iz kapaciteta ono sto je korisnik kupio
-        cheapest_facility.remaining_capacity -= assign_amount
-        #oduzimamo koliko je korisniku potrebno resursa
-        customer_with_min_shipping.remaining_demand -= assign_amount
+            sorted_facilities = self.problem.facilities.sort_by_cost_capacity_ratio()
 
-    sorted_facilities = p.facilities.sort_by_cost_capacity_ratio()
+        return self.solution
+
+
 
