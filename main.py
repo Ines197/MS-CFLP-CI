@@ -11,5 +11,8 @@ def main():
 
     s.solution.print_solution()
 
+    s.solve_local_search()
+
+    s.solution.print_solution()
 if __name__ == "__main__":
     main()

@@ -99,4 +99,13 @@ class Solution:
         print("Assignments:")
         for (cust, fac), amt in self.assignments.items():
             print(f"  Customer {cust} → Facility {fac}: {amt}")
+
         print(f"Total cost: {self.total_cost():.2f}")
+
+    def customers_of_facility(self, id):
+        opa = []
+        for (f, c) in self.assignments.keys():
+            opa.append(c)
+        return opa
+
+
