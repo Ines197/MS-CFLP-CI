@@ -37,7 +37,7 @@ def parse_instance(filename):
     # convert to 0-based indices
     incompatibilities = [(int(a) - 1, int(b) - 1) for a, b in pairs]
 
-    # --- Build objects ---
+    # Build objects
     facilities = [Facility(i, capacity[i], fixed_cost[i]) for i in range(n_fac)]
     customers = [Customer(i, demand[i]) for i in range(n_cust)]
 
