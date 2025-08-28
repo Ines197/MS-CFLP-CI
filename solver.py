@@ -37,7 +37,7 @@ class Solver:
             fac.open()
 
             while fac.remaining_capacity > 0:
-                best_customers = self.heuristics.rcl(fac, rcl_size=5)
+                best_customers = self.heuristics.rcl(fac, 5)
 
                 if not best_customers:
                     break
@@ -51,6 +51,11 @@ class Solver:
                 self.heuristics.customer_rcl.update_after_assignment(fac, chosen_cust)
                 if chosen_cust.remaining_demand == 0:
                     self.heuristics.customer_rcl.remove_customer(chosen_cust.id)
+
+        if not self.solution.is_valid():
+            print("Greedy solution is invalid!")
+        else:
+            print("Greedy solution is valid!")
 
     def solve_local_search(self, max_passes: int = 10, step: float = float("inf")) -> None:
 
@@ -157,3 +162,7 @@ class Solver:
                         self.solution.add_assignment(cust_id, B_id, taken)
 
                         improved_globally = True
+        if not self.solution.is_valid():
+            print("Local search solution is invalid!")
+        else:
+            print("Local search solution is valid!")
