@@ -19,7 +19,7 @@ class CustomerRCL:
         if facility.id not in self.eligible:
             return []
         if rcl_size is None:
-            return self.eligible[facility.id]
+            rcl_size = 5
         return self.eligible[facility.id][:rcl_size]
 
     def remove_customer(self, customer_id):

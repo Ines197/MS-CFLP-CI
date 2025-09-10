@@ -37,7 +37,7 @@ class Solver:
             fac.open()
 
             while fac.remaining_capacity > 0:
-                best_customers = self.heuristics.rcl(fac, 5)
+                best_customers = self.heuristics.rcl(fac, 1)
 
                 if not best_customers:
                     break
@@ -58,8 +58,6 @@ class Solver:
             print("Greedy solution is valid!")
 
     def solve_local_search(self, max_passes: int = 10, step: float = float("inf")) -> None:
-
-
         inst = self.problem
 
         fac_by_id = {fac.id: fac for fac in inst.facilities}

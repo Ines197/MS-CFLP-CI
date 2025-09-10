@@ -1,4 +1,4 @@
-import matplotlib.pyplot as plt
+import plotly.graph_objects as go
 import random
 
 class Solution:
@@ -62,50 +62,95 @@ class Solution:
 
     def visualize(self):
         """
-        Simple 2D visualization:
-        - Facilities are squares
-        - Customers are circles
-        - Lines show assignments
-        If x,y are not defined for Facility/Customer, they are randomly generated.
+        Vizualizacija pomoću Plotly:
+        - Fabrike = kvadrati (zelene ako su otvorene, crvene ako nisu)
+        - Kupci = krugovi (plavi)
+        - Grane = dodele (sive linije sa etiketom količine)
         """
-        plt.figure(figsize=(8, 6))
+        nodes_x, nodes_y, nodes_text, nodes_color, nodes_symbol = [], [], [], [], []
+        edges_x, edges_y, edge_text = [], [], []
+
+        # layout koordinata (Plotly nema automatski layout kao NetworkX spring_layout)
+        # pa ćemo staviti fabrike gore, kupce dole
+        fac_y, cust_y = 1, 0
+        fac_step = 1 / (len(self.instance.facilities) + 1)
+        cust_step = 1 / (len(self.instance.customers) + 1)
+
+        fac_pos, cust_pos = {}, {}
 
         # fabrike
-        for fac in self.instance.facilities:
-            if not hasattr(fac, "x") or not hasattr(fac, "y"):
-                fac.x = random.uniform(0, 10)
-                fac.y = random.uniform(0, 10)
-
-            x, y = fac.x, fac.y
-            color = 'green' if fac.id in self.facilities_open else 'red'
-            plt.scatter(x, y, s=200, c=color, marker='s')
-            plt.text(x, y + 0.5, f'F{fac.id}', ha='center')
+        for i, fac in enumerate(self.instance.facilities, start=1):
+            x, y = i * fac_step, fac_y
+            fac_pos[fac.id] = (x, y)
+            nodes_x.append(x)
+            nodes_y.append(y)
+            nodes_text.append(f"F{fac.id}<br>Cap={fac.capacity}")
+            nodes_color.append("green" if fac.id in self.facilities_open else "red")
+            nodes_symbol.append("square")
 
         # kupci
-        for cust in self.instance.customers:
-            if not hasattr(cust, "x") or not hasattr(cust, "y"):
-                cust.x = random.uniform(0, 10)
-                cust.y = random.uniform(0, 10)
+        for i, cust in enumerate(self.instance.customers, start=1):
+            x, y = i * cust_step, cust_y
+            cust_pos[cust.id] = (x, y)
+            nodes_x.append(x)
+            nodes_y.append(y)
+            nodes_text.append(f"C{cust.id}<br>Demand={cust.demand}")
+            nodes_color.append("blue")
+            nodes_symbol.append("circle")
 
-            x, y = cust.x, cust.y
-            plt.scatter(x, y, s=100, c='blue', marker='o')
-            plt.text(x, y + 0.3, f'C{cust.id}', ha='center')
-
-        # assignments
+        # grane
         for (cust_id, fac_id), amount in self.assignments.items():
-            cust = self.instance.customers.get_by_id(cust_id)
-            fac = self.instance.facilities[fac_id]
-            plt.plot([cust.x, fac.x], [cust.y, fac.y], 'k--', alpha=0.5)
+            if amount > 0:
+                x0, y0 = cust_pos[cust_id]
+                x1, y1 = fac_pos[fac_id]
+                edges_x += [x0, x1, None]
+                edges_y += [y0, y1, None]
+                mid_x, mid_y = (x0 + x1) / 2, (y0 + y1) / 2
+                edge_text.append((mid_x, mid_y, str(amount)))
 
-            mid_x = (cust.x + fac.x) / 2
-            mid_y = (cust.y + fac.y) / 2
-            plt.text(mid_x, mid_y, f'{amount}', color='purple', fontsize=8)
+        # trace za grane
+        edge_trace = go.Scatter(
+            x=edges_x, y=edges_y,
+            line=dict(width=1, color="gray"),
+            hoverinfo="none",
+            mode="lines"
+        )
 
-        plt.title(f"Solution Visualization - Total Cost: {self.total_cost():.2f}")
-        plt.xlabel("X")
-        plt.ylabel("Y")
-        plt.grid(True)
-        plt.show()
+        # trace za čvorove
+        node_trace = go.Scatter(
+            x=nodes_x, y=nodes_y,
+            mode="markers+text",
+            text=nodes_text,
+            textposition="top center",
+            marker=dict(
+                color=nodes_color,
+                size=20,
+                symbol=nodes_symbol,
+                line=dict(width=2, color="black")
+            ),
+            hoverinfo="text"
+        )
+
+        # figure
+        fig = go.Figure(data=[edge_trace, node_trace])
+
+        # dodaj oznake količina na grane
+        for x, y, label in edge_text:
+            fig.add_annotation(
+                x=x, y=y, text=label,
+                showarrow=False,
+                font=dict(size=10, color="purple")
+            )
+
+        fig.update_layout(
+            title=f"Solution Visualization - Total Cost: {self.total_cost():.2f}",
+            showlegend=False,
+            margin=dict(l=20, r=20, t=40, b=20),
+            xaxis=dict(showgrid=False, zeroline=False, visible=False),
+            yaxis=dict(showgrid=False, zeroline=False, visible=False)
+        )
+
+        fig.show()
 
     def print_solution(self):
         print("Assignments:")
