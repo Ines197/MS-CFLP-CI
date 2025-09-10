@@ -4,7 +4,6 @@ from customer import Customer
 from facilities import Facilities
 from customers import Customers
 
-
 class Instance:
     def __init__(self, facilities, customers, shipping_costs, incompatibilities):
         self.facilities = facilities          # Facilities wrapper

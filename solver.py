@@ -3,6 +3,7 @@ from typing import Optional, Dict, List, Tuple
 import solution
 import random
 import heuristics
+import instance
 
 class Solver:
     def __init__(self, problem_instance):
@@ -10,6 +11,36 @@ class Solver:
         self.solution = solution.Solution(problem_instance)
         self.heuristics = heuristics.Heuristics(self)
         self.rng = random.Random(53)
+
+    def solve_grasp(self, number_of_iterations: int = 5):
+        # Pokreni prvi greedy kao početno rešenje
+        self.solution.reset()
+        self.problem.facilities.reset()
+        self.problem.customers.reset()
+        self.heuristics.customer_rcl.reset()
+
+        self.solve_greedy()
+        best_cost = self.solution.total_cost()
+        best_solution_snapshot = self.solution.copy()
+
+        for _ in range(number_of_iterations):
+            # Reset pre svake iteracije
+            self.solution.reset()
+            self.problem.facilities.reset()
+            self.problem.customers.reset()
+            self.heuristics.customer_rcl.reset()
+
+            self.solve_greedy()
+
+            current_cost = self.solution.total_cost()
+            if current_cost < best_cost:
+                best_cost = current_cost
+                best_solution_snapshot = self.solution.copy()
+
+        # Postavi najbolje rešenje
+        self.solution = best_solution_snapshot
+
+        self.solve_local_search()
 
     def has_conflict(self, cust_id, already_assigned_ids):
         for other_cust_id in already_assigned_ids:

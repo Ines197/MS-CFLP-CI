@@ -2,20 +2,16 @@
 import instance
 from solver import Solver
 
-def main():
-    problem = instance.parse_instance("test.dzn")
-
-    s = Solver(problem)
-
-    s.solve_greedy()
-
-    s.solution.print_solution()
-
-    s.solve_local_search()
-
-    s.solution.print_solution()
-
-    s.solution.visualize()
+from runner import Runner
 
 if __name__ == "__main__":
-    main()
+    runner = Runner(
+        reference_file="references.csv",
+        instances_folder="Instances"
+    )
+
+    # Pokreni i snimi rezultate u novi csv
+    runner.run_all(
+        output_file="my_reference.csv",
+        max_iterations=3  # koliko puta da radi GRASP
+    )

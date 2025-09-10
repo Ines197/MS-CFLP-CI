@@ -35,3 +35,6 @@ class CustomerRCL:
             c for c in self.eligible[facility.id]
             if not self.solver.has_conflict(c.id, already_assigned)
         ]
+
+    def reset(self):
+        self._compute_eligible()

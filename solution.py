@@ -165,4 +165,17 @@ class Solution:
             opa.append(c)
         return opa
 
+    def copy(self):
+        new_sol = Solution(self.instance)
+        new_sol.assignments = self.assignments.copy()
+        new_sol.facility_used_capacity = self.facility_used_capacity.copy()
+        new_sol.customer_supply = self.customer_supply.copy()
+        new_sol.facilities_open = self.facilities_open.copy()
+        return new_sol
+
+    def reset(self):
+        self.assignments.clear()
+        self.facility_used_capacity.clear()
+        self.customer_supply.clear()
+        self.facilities_open.clear()
 
