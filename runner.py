@@ -1,8 +1,8 @@
-import csv
-import time
-from instance import parse_instance
+from bestsolutions import BestSolutions
+from solution import Solution
 from solver import Solver
-import cProfile, pstats, io
+from instance import parse_instance
+import csv, time
 
 class Runner:
     def __init__(self, reference_file: str, instances_folder: str):
@@ -11,7 +11,6 @@ class Runner:
         self.reference_results = self._load_reference_results()
 
     def _load_reference_results(self) -> dict:
-        """Učitaj csv fajl sa rezultatima iz rada (min i avg)."""
         reference = {}
         with open(self.reference_file, mode="r") as f:
             reader = csv.DictReader(f)
@@ -24,6 +23,7 @@ class Runner:
 
     def profile(fnc):
         def inner(*args, **kwargs):
+            import cProfile, pstats, io
             pr = cProfile.Profile()
             pr.enable()
             retval = fnc(*args, **kwargs)
@@ -34,34 +34,44 @@ class Runner:
             ps.print_stats()
             print(s.getvalue())
             return retval
-
         return inner
 
     @profile
-    def run_all(self, output_file: str = "comparison.csv"):
-        """Pokreni solver za sve instance i snimi poređenje u CSV."""
+    def run_all(self, output_file: str = "comparison.csv", grasp_runs: int = 20, top_k: int = 10):
+        """Pokreni solver za sve instance više puta i sačuvaj najboljih K rešenja."""
         with open(output_file, mode="w", newline="") as f:
             writer = csv.writer(f)
-            writer.writerow(["inst", "my_cost", "ref_min", "ref_avg",
+            writer.writerow(["inst", "best_cost", "avg_bestK", "ref_min", "ref_avg",
                              "gap_min(%)", "gap_avg(%)", "time(s)"])
 
             for inst_name, (ref_min, ref_avg) in self.reference_results.items():
                 filename = f"{self.instances_folder}/{inst_name}.dzn"
                 problem = parse_instance(filename)
 
-                solver = Solver(problem)
+                best_solutions = BestSolutions(top_k)
 
                 start = time.time()
-                solver.solve_grasp()
-                cost = solver.solution.total_cost()
+                for _ in range(grasp_runs):
+                    solver = Solver(problem)
+                    solver.solve_grasp()
+                    if solver.solution.is_valid():
+                        best_solutions.add(solver.solution)
                 end = time.time()
 
-                gap_min = (cost - ref_min) / ref_min * 100
-                gap_avg = (cost - ref_avg) / ref_avg * 100
+                if len(best_solutions) == 0:
+                    print(f"[WARN] Nema validnih rešenja za {inst_name}")
+                    continue
+
+                best_cost = best_solutions.best().total_cost()
+                avg_best = sum(sol.total_cost() for sol in best_solutions.get_solutions()) / len(best_solutions)
+
+                gap_min = (best_cost - ref_min) / ref_min * 100
+                gap_avg = (avg_best - ref_avg) / ref_avg * 100
 
                 writer.writerow([
                     inst_name,
-                    round(cost, 2),
+                    round(best_cost, 2),
+                    round(avg_best, 2),
                     ref_min,
                     ref_avg,
                     round(gap_min, 2),
@@ -72,13 +82,13 @@ class Runner:
         print(f"[INFO] Rezultati su sačuvani u {output_file}")
 
     @profile
-    def run_two(self, output_file: str = "comparison_two.csv"):
-        """Pokreni solver samo za wlp01 i wlp02 i snimi poređenje u CSV."""
+    def run_two(self, output_file: str = "comparison_two.csv", grasp_runs: int = 10, top_k: int = 5):
+        """Pokreni solver samo za wlp01 i wlp02 više puta i uporedi sa referentnim rešenjima."""
         wanted = ["wlp01", "wlp02"]
 
         with open(output_file, mode="w", newline="") as f:
             writer = csv.writer(f)
-            writer.writerow(["inst", "my_cost", "ref_min", "ref_avg",
+            writer.writerow(["inst", "best_cost", "avg_bestK", "ref_min", "ref_avg",
                              "gap_min(%)", "gap_avg(%)", "time(s)"])
 
             for inst_name in wanted:
@@ -90,19 +100,40 @@ class Runner:
                 filename = f"{self.instances_folder}/{inst_name}.dzn"
                 problem = parse_instance(filename)
 
-                solver = Solver(problem)
+                best_solutions = BestSolutions(top_k)
 
                 start = time.time()
-                solver.solve_grasp()
-                cost = solver.solution.total_cost()
+                for _ in range(grasp_runs):
+                    solver = Solver(problem)
+                    solver.solve_grasp()
+                    #if solver.solution.is_valid():
+                    best_solutions.add(solver.solution)
                 end = time.time()
 
-                gap_min = (cost - ref_min) / ref_min * 100
-                gap_avg = (cost - ref_avg) / ref_avg * 100
+                # naše najbolje GRASP rešenje
+                best_grasp_solution = best_solutions.best()
+                best_cost = best_grasp_solution.total_cost()
+                avg_best = sum(sol.total_cost() for sol in best_solutions.get_solutions()) / len(best_solutions)
 
+                # poređenje sa referentnim
+                print(f"\n=== Instance {inst_name} ===")
+                print(f"Naše najbolje GRASP rešenje: {best_cost:.2f}")
+                print(f"Referentno rešenje min: {ref_min:.2f}, avg: {ref_avg:.2f}")
+
+                if best_cost < ref_min:
+                    print("✅ Naše rešenje je BOLJE od referentnog min!")
+                elif best_cost > ref_min:
+                    print("❌ Naše rešenje je GORE od referentnog min.")
+                else:
+                    print("➖ Naše rešenje je jednako referentnom min.")
+
+                # upis u CSV
+                gap_min = (best_cost - ref_min) / ref_min * 100
+                gap_avg = (avg_best - ref_avg) / ref_avg * 100
                 writer.writerow([
                     inst_name,
-                    round(cost, 2),
+                    round(best_cost, 2),
+                    round(avg_best, 2),
                     ref_min,
                     ref_avg,
                     round(gap_min, 2),
@@ -111,3 +142,4 @@ class Runner:
                 ])
 
         print(f"[INFO] Rezultati za wlp01 i wlp02 su sačuvani u {output_file}")
+

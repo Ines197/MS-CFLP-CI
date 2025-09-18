@@ -12,7 +12,7 @@ class Solver:
         self.heuristics = heuristics.Heuristics(self)
         self.rng = random.Random(53)
 
-    def solve_grasp(self, number_of_iterations: int = 20):
+    def solve_grasp(self, number_of_iterations: int = 5):
         # Pokreni prvi greedy kao početno rešenje
         self.solution.reset()
         self.problem.facilities.reset()
