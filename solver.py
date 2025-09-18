@@ -196,3 +196,174 @@ class Solver:
             print("Local search solution is invalid!")
         else:
             print("Local search solution is valid!")
+
+    def solve_ga(
+            self,
+            generations: int = 150,
+            pop_size: int = 40,
+            tournament_k: int = 3,
+            cx_prob: float = 0.9,
+            mut_prob: float = 0.08,
+            init_top_k: int = 3,
+            verbose: bool = True,
+    ):
+        """
+        Genetski algoritam za CFLP:
+        - Hromozom: dict {cust_id -> fac_id} (primarna fabrika).
+        - Dekodiranje: greedy punjenje izabrane fabrike, pa prelazak na sledeće najjeftinije.
+        - Selekcija: turnir.
+        - Crossover: jednotačkani.
+        - Mutacija: promena fabrike u jednu od k najjeftinijih za tog kupca.
+        """
+        inst = self.problem
+        rng = self.rng
+
+        customer_ids = [c.id for c in inst.customers]
+        facility_ids = [f.id for f in inst.facilities]
+
+        cheap_fac_order: Dict[int, List[int]] = {
+            c_id: sorted(facility_ids, key=lambda f_id: inst.shipping_costs[(c_id, f_id)])
+            for c_id in customer_ids
+        }
+
+        def random_individual() -> Dict[int, int]:
+            chrom = {}
+            for c_id in customer_ids:
+                top = cheap_fac_order[c_id][:max(1, min(init_top_k, len(facility_ids)))]
+                chrom[c_id] = rng.choice(top)
+            return chrom
+
+        def decode_to_solution(chrom: Dict[int, int]) -> Tuple["solution.Solution", float]:
+            """
+            Pretvara hromozom u Solution:
+            - ne dira self.problem.* remaining_* polja,
+            - vodi sopstvene local 'remaining' mape,
+            - penalizuje eventualno neisporučenu potražnju.
+            """
+            sol = solution.Solution(inst)
+            # lokalni "remaining"
+            rem_cap = {f.id: f.capacity for f in inst.facilities}
+            rem_dem = {c.id: getattr(c, "demand", getattr(c, "remaining_demand", 0.0)) for c in inst.customers}
+
+            for c_id in customer_ids:
+                if rem_dem[c_id] <= 0:
+                    continue
+                f_id = chrom[c_id]
+                take = min(rem_dem[c_id], rem_cap[f_id])
+                if take > 0:
+                    sol.add_assignment(c_id, f_id, take)
+                    rem_dem[c_id] -= take
+                    rem_cap[f_id] -= take
+
+            for c_id in customer_ids:
+                if rem_dem[c_id] <= 0:
+                    continue
+                for f_id in cheap_fac_order[c_id]:
+                    if rem_dem[c_id] <= 0:
+                        break
+                    if rem_cap[f_id] <= 0:
+                        continue
+                    take = min(rem_dem[c_id], rem_cap[f_id])
+                    if take > 0:
+                        sol.add_assignment(c_id, f_id, take)
+                        rem_dem[c_id] -= take
+                        rem_cap[f_id] -= take
+
+            base_cost = sol.total_cost()
+            unmet = sum(max(0.0, d) for d in rem_dem.values())
+            penalty = 1e6 * unmet
+            return sol, base_cost + penalty
+
+        def fitness(chrom: Dict[int, int]) -> float:
+            _, fit = decode_to_solution(chrom)
+            return fit
+
+        def tournament_select(pop: List[Dict[int, int]]) -> Dict[int, int]:
+            cand = rng.sample(pop, k=min(tournament_k, len(pop)))
+            cand.sort(key=fitness)
+            return cand[0]
+
+        def one_point_crossover(p1: Dict[int, int], p2: Dict[int, int]) -> Tuple[Dict[int, int], Dict[int, int]]:
+            if rng.random() > cx_prob or len(customer_ids) < 2:
+                return p1.copy(), p2.copy()
+            cut = rng.randrange(1, len(customer_ids))
+            order = customer_ids[:]  # stabilno
+            c1, c2 = {}, {}
+            for i, c_id in enumerate(order):
+                if i < cut:
+                    c1[c_id] = p1[c_id]
+                    c2[c_id] = p2[c_id]
+                else:
+                    c1[c_id] = p2[c_id]
+                    c2[c_id] = p1[c_id]
+            return c1, c2
+
+        def mutate(chrom: Dict[int, int]) -> None:
+            for c_id in customer_ids:
+                if rng.random() < mut_prob:
+                    options = cheap_fac_order[c_id][:max(1, min(init_top_k, len(facility_ids)))]
+                    if len(options) <= 1:
+                        chrom[c_id] = rng.choice(facility_ids)
+                    else:
+                        new_f = rng.choice([f for f in options if f != chrom[c_id]] or options)
+                        chrom[c_id] = new_f
+
+        population = [random_individual() for _ in range(pop_size)]
+
+        best_chrom = None
+        best_fit = float("inf")
+        best_sol_snapshot = None
+
+        for ind in population:
+            sol_i, fit_i = decode_to_solution(ind)
+            if fit_i < best_fit and sol_i.is_valid():
+                best_fit = fit_i
+                best_chrom = ind.copy()
+                best_sol_snapshot = sol_i.copy()
+
+        for gen in range(generations):
+            new_pop: List[Dict[int, int]] = []
+
+            # elita (1 komad) — čuvamo trenutno najbolji
+            if best_chrom is not None:
+                new_pop.append(best_chrom.copy())
+
+            # generiši potomke
+            while len(new_pop) < pop_size:
+                p1 = tournament_select(population)
+                p2 = tournament_select(population)
+                c1, c2 = one_point_crossover(p1, p2)
+                mutate(c1)
+                mutate(c2)
+                new_pop.append(c1)
+                if len(new_pop) < pop_size:
+                    new_pop.append(c2)
+
+            population = new_pop
+
+            # evaluacija + update elite
+            for ind in population:
+                sol_i, fit_i = decode_to_solution(ind)
+                # preferiramo validna rešenja; penal već kažnjava nevalidna
+                if fit_i < best_fit and sol_i.is_valid():
+                    best_fit = fit_i
+                    best_chrom = ind.copy()
+                    best_sol_snapshot = sol_i.copy()
+
+            if verbose and (gen % max(1, generations // 10) == 0 or gen == generations - 1):
+                print(f"[GA] gen={gen + 1}/{generations} best_cost={best_fit:.6f}")
+
+        # fallback: ako nismo imali validno kroz elite, uzmi trenutno najbolje dekodirano (iako penalizovano)
+        if best_sol_snapshot is None and population:
+            # nađi najmanji fitness pa postavi
+            population.sort(key=fitness)
+            bs, bf = decode_to_solution(population[0])
+            best_sol_snapshot = bs
+            best_fit = bf
+
+        # postavi najbolje rešenje
+        self.solution = best_sol_snapshot if best_sol_snapshot is not None else self.solution
+        if self.solution.is_valid():
+            print("GA solution is valid!")
+        else:
+            print("GA solution is invalid (penalized).")
