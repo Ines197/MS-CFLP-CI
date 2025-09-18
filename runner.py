@@ -53,6 +53,7 @@ class Runner:
 
                 start = time.time()
                 solver.solve_grasp()
+                solver.solve_local_search()
                 cost = solver.solution.total_cost()
                 end = time.time()
 
@@ -94,6 +95,7 @@ class Runner:
 
                 start = time.time()
                 solver.solve_grasp()
+                solver.solve_ga()
                 cost = solver.solution.total_cost()
                 end = time.time()
 
