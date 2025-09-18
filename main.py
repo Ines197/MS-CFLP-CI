@@ -1,7 +1,3 @@
-# main.py
-import instance
-from solver import Solver
-
 from runner import Runner
 
 if __name__ == "__main__":
@@ -11,7 +7,6 @@ if __name__ == "__main__":
     )
 
     # Pokreni i snimi rezultate u novi csv
-    runner.run_all(
-        output_file="my_reference.csv",
-        max_iterations=3  # koliko puta da radi GRASP
+    runner.run_two(
+        output_file="two_ref_solution.csv"
     )

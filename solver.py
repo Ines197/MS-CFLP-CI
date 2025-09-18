@@ -12,7 +12,7 @@ class Solver:
         self.heuristics = heuristics.Heuristics(self)
         self.rng = random.Random(53)
 
-    def solve_grasp(self, number_of_iterations: int = 5):
+    def solve_grasp(self, number_of_iterations: int = 20):
         # Pokreni prvi greedy kao početno rešenje
         self.solution.reset()
         self.problem.facilities.reset()
@@ -31,6 +31,7 @@ class Solver:
             self.heuristics.customer_rcl.reset()
 
             self.solve_greedy()
+            self.solve_local_search()
 
             current_cost = self.solution.total_cost()
             if current_cost < best_cost:
@@ -39,8 +40,8 @@ class Solver:
 
         # Postavi najbolje rešenje
         self.solution = best_solution_snapshot
+        print("solution done")
 
-        self.solve_local_search()
 
     def has_conflict(self, cust_id, already_assigned_ids):
         for other_cust_id in already_assigned_ids:
@@ -68,7 +69,7 @@ class Solver:
             fac.open()
 
             while fac.remaining_capacity > 0:
-                best_customers = self.heuristics.rcl(fac, 1)
+                best_customers = self.heuristics.rcl(fac, 10)
 
                 if not best_customers:
                     break

@@ -11,7 +11,6 @@ class Instance:
         self.shipping_costs = shipping_costs  # dict[(cust_id, fac_id)] = cost
         self.incompatibilities = incompatibilities
 
-
 def parse_instance(filename):
     with open(filename, "r") as f:
         text = f.read()
