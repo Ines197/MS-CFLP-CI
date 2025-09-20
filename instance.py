@@ -33,7 +33,11 @@ def parse_instance(filename):
     incomp_text = re.search(r"IncompatiblePairs\s*=\s*\[\|(.*?)\|\];", text, re.DOTALL).group(1)
     pairs = re.findall(r"(\d+),\s*(\d+)", incomp_text)
     # convert to 0-based indices
-    incompatibilities = [(int(a) - 1, int(b) - 1) for a, b in pairs]
+    incompatibilities = set()
+    for a, b in pairs:
+        a, b = int(a) - 1, int(b) - 1
+        incompatibilities.add((a, b))
+        incompatibilities.add((b, a))
 
     # --- Build objects ---
     facilities = [Facility(i, capacity[i], fixed_cost[i]) for i in range(n_fac)]

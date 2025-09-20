@@ -42,13 +42,8 @@ class Solver:
         self.solution = best_solution_snapshot
         print("solution done")
 
-
     def has_conflict(self, cust_id, already_assigned_ids):
-        for other_cust_id in already_assigned_ids:
-            if (cust_id, other_cust_id) in self.problem.incompatibilities or \
-                    (other_cust_id, cust_id) in self.problem.incompatibilities:
-                return True
-        return False
+        return any((cust_id, other) in self.problem.incompatibilities for other in already_assigned_ids)
 
     def _assign_customer_to_facility(self, customer, facility):
         assign_amount = min(facility.remaining_capacity, customer.remaining_demand)
@@ -91,7 +86,6 @@ class Solver:
 
     def solve_local_search(self, max_passes: int = 10, step: float = float("inf")) -> None:
         inst = self.problem
-
         fac_by_id = {fac.id: fac for fac in inst.facilities}
 
         def unit_cost(cust_id: int, fac_id: int) -> float:
@@ -101,35 +95,17 @@ class Solver:
             used = self.solution.facility_used_capacity.get(fac_id, 0)
             return fac_by_id[fac_id].capacity - used
 
-        def _remove_assignment(cust_id: int, fac_id: int, amount: float) -> float:
-            key = (cust_id, fac_id)
-            old = self.solution.assignments.get(key, 0.0)
-            take = min(old, amount)
-            if take <= 0:
-                return 0.0
+        def customers_assigned_to(fac_id: int):
+            return {c_id for (c_id, f_id), amt in self.solution.assignments.items() if f_id == fac_id and amt > 0}
 
-
-            new_amt = old - take
-            if new_amt > 0:
-                self.solution.assignments[key] = new_amt
+        def incompatible_with_any(cust_id: int, other_customers: set) -> bool:
+            if hasattr(inst, "incompatibility_graph"):
+                return not inst.incompatibility_graph.get(cust_id, set()).isdisjoint(other_customers)
             else:
-                self.solution.assignments.pop(key, None)
-
-
-            self.solution.facility_used_capacity[fac_id] = self.solution.facility_used_capacity.get(fac_id, 0.0) - take
-            if self.solution.facility_used_capacity[fac_id] <= 0:
-                self.solution.facility_used_capacity.pop(fac_id, None)
-
-            self.solution.customer_supply[cust_id] = self.solution.customer_supply.get(cust_id, 0.0) - take
-            if self.solution.customer_supply[cust_id] <= 0:
-                self.solution.customer_supply.pop(cust_id, None)
-
-
-            still_used = any(f_id == fac_id and amt > 0 for (c_id, f_id), amt in self.solution.assignments.items())
-            if not still_used and fac_id in self.solution.facilities_open:
-                self.solution.facilities_open.remove(fac_id)
-
-            return take
+                for other in other_customers:
+                    if (cust_id, other) in inst.incompatibilities or (other, cust_id) in inst.incompatibilities:
+                        return True
+                return False
 
         EPS = 1e-12
         passes = 0
@@ -148,7 +124,6 @@ class Solver:
 
                 for cust_id, amt in pairs:
                     cA = unit_cost(cust_id, A_id)
-
                     best_delta = 0.0
                     best_move = None
 
@@ -156,9 +131,15 @@ class Solver:
                         B_id = B.id
                         if B_id == A_id:
                             continue
+
                         capB = remaining_capacity(B_id)
                         if capB <= 0:
                             continue
+
+                        # incompatibility check
+                        if incompatible_with_any(cust_id, customers_assigned_to(B_id)):
+                            continue
+
                         cB = unit_cost(cust_id, B_id)
                         if cB >= cA:
                             continue
@@ -180,22 +161,28 @@ class Solver:
 
                         if total_delta < best_delta:
                             best_delta = total_delta
-                            best_move = (B_id, move_amt, open_penalty, close_saving)
+                            best_move = (B_id, move_amt)
 
                     if best_move is not None:
-                        B_id, move_amt, open_penalty, close_saving = best_move
+                        B_id, move_amt = best_move
 
-                        taken = _remove_assignment(cust_id, A_id, move_amt)
-                        if taken <= 0:
-                            continue
+                        # directly update solution (guaranteed valid due to checks)
+                        self.solution.add_assignment(cust_id, B_id, move_amt)
+                        self.solution.assignments[(cust_id, A_id)] -= move_amt
+                        if self.solution.assignments[(cust_id, A_id)] <= 0:
+                            self.solution.assignments.pop((cust_id, A_id))
 
-                        self.solution.add_assignment(cust_id, B_id, taken)
+                        self.solution.facility_used_capacity[A_id] -= move_amt
+                        if self.solution.facility_used_capacity[A_id] <= 0:
+                            self.solution.facility_used_capacity.pop(A_id, None)
+                            self.solution.facilities_open.discard(A_id)
 
                         improved_globally = True
+
         if not self.solution.is_valid():
-            print("Local search solution is invalid!")
+            print("Local search solution is INVALID!")
         else:
-            print("Local search solution is valid!")
+            print("Local search solution is VALID ✅")
 
     def solve_ga(
             self,
