@@ -37,7 +37,7 @@ class Runner:
         return inner
 
     @profile
-    def run_all(self, output_file: str = "comparison.csv", grasp_runs: int = 20, top_k: int = 10):
+    def run_all(self, output_file: str = "comparison.csv", grasp_runs: int = 10, top_k: int = 5):
         """Pokreni solver za sve instance više puta i sačuvaj najboljih K rešenja."""
         with open(output_file, mode="w", newline="") as f:
             writer = csv.writer(f)

@@ -9,10 +9,10 @@ class Solver:
     def __init__(self, problem_instance):
         self.problem = problem_instance
         self.solution = solution.Solution(problem_instance)
-        self.heuristics = heuristics.Heuristics(self)
         self.rng = random.Random(53)
+        self.heuristics = heuristics.Heuristics(self)
 
-    def solve_grasp(self, number_of_iterations: int = 5):
+    def solve_grasp(self, number_of_iterations: int = 10):
         # Pokreni prvi greedy kao početno rešenje
         self.solution.reset()
         self.problem.facilities.reset()
@@ -20,6 +20,8 @@ class Solver:
         self.heuristics.customer_rcl.reset()
 
         self.solve_greedy()
+        self.solve_local_search()
+
         best_cost = self.solution.total_cost()
         best_solution_snapshot = self.solution.copy()
 
@@ -32,6 +34,10 @@ class Solver:
 
             self.solve_greedy()
             self.solve_local_search()
+            self.heuristics.large_neighborhood_search()
+
+            # Apply facility-level heuristics after local search
+            #self.apply_facility_heuristics()
 
             current_cost = self.solution.total_cost()
             if current_cost < best_cost:
@@ -41,6 +47,14 @@ class Solver:
         # Postavi najbolje rešenje
         self.solution = best_solution_snapshot
         print("solution done")
+
+    def apply_facility_heuristics(self):
+        """Apply your 5 facility heuristics to further improve the solution."""
+        h = self.heuristics
+
+        # You can try them in order or randomly pick some
+        h.close_one_facility()
+        h.open_one_facility()
 
     def has_conflict(self, cust_id, already_assigned_ids):
         return any((cust_id, other) in self.problem.incompatibilities for other in already_assigned_ids)
@@ -64,7 +78,7 @@ class Solver:
             fac.open()
 
             while fac.remaining_capacity > 0:
-                best_customers = self.heuristics.rcl(fac, 10)
+                best_customers = self.heuristics.rcl(fac, 3)
 
                 if not best_customers:
                     break

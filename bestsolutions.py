@@ -1,46 +1,46 @@
 import heapq
 import random
 from solution import Solution
+import itertools
+
+_counter = itertools.count()  # globalni brojač za tie-breaker
 
 class BestSolutions:
     def __init__(self, n: int):
         self.n = n
-        # heap čuvamo kao (-cost, solution), jer heapq u Python-u pravi min-heap
-        # a mi hoćemo da najveći cost bude na vrhu (da ga najlakše izbacimo)
+        # heap čuvamo kao (-cost, counter, solution)
         self._heap = []
 
     def add(self, solution: Solution):
         cost = solution.total_cost()
-        # ako još nema n rešenja, ubaci odmah
+        entry = (-cost, next(_counter), solution.copy())
         if len(self._heap) < self.n:
-            heapq.heappush(self._heap, (-cost, solution.copy()))
+            heapq.heappush(self._heap, entry)
         else:
-            # pogledaj najgore (najveći cost)
-            worst_cost, _ = self._heap[0]
+            worst_cost, _, _ = self._heap[0]
             worst_cost = -worst_cost
             if cost < worst_cost:
-                # izbaci najgore i ubaci novo
-                heapq.heapreplace(self._heap, (-cost, solution.copy()))
+                heapq.heapreplace(self._heap, entry)
 
     def get_solutions(self):
         # vraća sortirano po rastućem cost-u
-        return [sol for _, sol in sorted(self._heap, key=lambda x: -x[0])]
+        return [sol for _, _, sol in sorted(self._heap, key=lambda x: -x[0])]
 
     def random_solution(self):
         if not self._heap:
             return None
-        _, sol = random.choice(self._heap)
+        _, _, sol = random.choice(self._heap)
         return sol
 
     def best(self):
         if not self._heap:
             return None
-        return min(self._heap, key=lambda x: -x[0])[1]
+        return min(self._heap, key=lambda x: -x[0])[2]
 
     def worst(self):
         if not self._heap:
             return None
-        return max(self._heap, key=lambda x: -x[0])[1]
+        return max(self._heap, key=lambda x: -x[0])[2]
 
     def __len__(self):
         return len(self._heap)
