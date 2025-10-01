@@ -12,7 +12,7 @@ class Solver:
         self.rng = random.Random(53)
         self.heuristics = heuristics.Heuristics(self)
 
-    def solve_grasp(self, number_of_iterations: int = 10):
+    def solve_grasp(self, number_of_iterations: int = 20):
         # Pokreni prvi greedy kao početno rešenje
         self.solution.reset()
         self.problem.facilities.reset()
@@ -37,7 +37,7 @@ class Solver:
             self.heuristics.large_neighborhood_search()
 
             # Apply facility-level heuristics after local search
-            #self.apply_facility_heuristics()
+            self.apply_facility_heuristics()
 
             current_cost = self.solution.total_cost()
             if current_cost < best_cost:
@@ -78,7 +78,7 @@ class Solver:
             fac.open()
 
             while fac.remaining_capacity > 0:
-                best_customers = self.heuristics.rcl(fac, 3)
+                best_customers = self.heuristics.rcl(fac, 2)
 
                 if not best_customers:
                     break
