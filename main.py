@@ -7,6 +7,6 @@ if __name__ == "__main__":
     )
 
     # Pokreni i snimi rezultate u novi csv
-    runner.run_two(
-        output_file="two_ref_solution.csv"
+    runner.run_one(
+        output_file="one_ref.csv"
     )

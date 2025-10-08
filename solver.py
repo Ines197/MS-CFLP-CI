@@ -12,41 +12,68 @@ class Solver:
         self.rng = random.Random(53)
         self.heuristics = heuristics.Heuristics(self)
 
-    def solve_grasp(self, number_of_iterations: int = 20):
-        # Pokreni prvi greedy kao početno rešenje
+    def solve_grasp(self, number_of_iterations: int = 30):
+        # Inicijalno resetovanje
         self.solution.reset()
         self.problem.facilities.reset()
         self.problem.customers.reset()
         self.heuristics.customer_rcl.reset()
 
+        # Prvi greedy + lokalna pretraga kao početno rešenje
         self.solve_greedy()
         self.solve_local_search()
 
         best_cost = self.solution.total_cost()
         best_solution_snapshot = self.solution.copy()
 
-        for _ in range(number_of_iterations):
+        for iteration in range(number_of_iterations):
             # Reset pre svake iteracije
             self.solution.reset()
             self.problem.facilities.reset()
             self.problem.customers.reset()
             self.heuristics.customer_rcl.reset()
 
+            # GRASP faze: konstrukcija + lokalno poboljšanje
             self.solve_greedy()
             self.solve_local_search()
+
+            # Šira pretraga (LNS)
             self.heuristics.large_neighborhood_search()
+            """
+            # Primeni heuristike na nivou postrojenja
+            heuristics_list = [
+                self.heuristics.close_one_facility,
+                self.heuristics.open_one_facility,
+                self.heuristics.close_one_open_one,
+                self.heuristics.close_one_open_two,
+                self.heuristics.open_one_close_two,
+            ]
 
-            # Apply facility-level heuristics after local search
-            self.apply_facility_heuristics()
+            # Nasumično permutuj redosled heuristika
+            random.shuffle(heuristics_list)
 
+            # Primeni svaku heuristiku (ako je izvodljiva)
+            for heuristic in heuristics_list:
+                try:
+                    heuristic()
+                except Exception as e:
+                    # Ako neka heuristika zakaže, nastavi dalje bez prekida
+                    print(f"Warning: heuristic {heuristic.__name__} failed with error {e}")
+            """
+            # Evaluiraj novu konfiguraciju
             current_cost = self.solution.total_cost()
+
+            # Ako je bolje — ažuriraj najbolje rešenje
             if current_cost < best_cost:
                 best_cost = current_cost
                 best_solution_snapshot = self.solution.copy()
 
+            print(
+                f"Iteracija {iteration + 1}/{number_of_iterations} završena, trošak: {current_cost:.2f}, najbolji: {best_cost:.2f}")
+
         # Postavi najbolje rešenje
         self.solution = best_solution_snapshot
-        print("solution done")
+        print(f"GRASP završio. Najbolji trošak: {best_cost:.2f}")
 
     def apply_facility_heuristics(self):
         """Apply your 5 facility heuristics to further improve the solution."""
@@ -78,7 +105,7 @@ class Solver:
             fac.open()
 
             while fac.remaining_capacity > 0:
-                best_customers = self.heuristics.rcl(fac, 2)
+                best_customers = self.heuristics.rcl(fac, 3)
 
                 if not best_customers:
                     break

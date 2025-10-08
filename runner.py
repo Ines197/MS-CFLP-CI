@@ -82,9 +82,9 @@ class Runner:
         print(f"[INFO] Rezultati su sačuvani u {output_file}")
 
     @profile
-    def run_two(self, output_file: str = "comparison_two.csv", grasp_runs: int = 10, top_k: int = 5):
-        """Pokreni solver samo za wlp01 i wlp02 više puta i uporedi sa referentnim rešenjima."""
-        wanted = ["wlp01", "wlp02"]
+    def run_one(self, output_file: str = "comparison.csv", grasp_runs: int = 10, top_k: int = 5):
+        """Pokreni solver samo za prvu instancu (wlp01) više puta i uporedi sa referentnim rešenjima."""
+        wanted = ["wlp01"]  # samo prva instanca
 
         with open(output_file, mode="w", newline="") as f:
             writer = csv.writer(f)
@@ -106,16 +106,15 @@ class Runner:
                 for _ in range(grasp_runs):
                     solver = Solver(problem)
                     solver.solve_grasp()
-                    #if solver.solution.is_valid():
+                    # ako želiš da preskoči nevalidna rešenja, odkomentariši sledeću liniju
+                    # if solver.solution.is_valid():
                     best_solutions.add(solver.solution)
                 end = time.time()
 
-                # naše najbolje GRASP rešenje
                 best_grasp_solution = best_solutions.best()
                 best_cost = best_grasp_solution.total_cost()
                 avg_best = sum(sol.total_cost() for sol in best_solutions.get_solutions()) / len(best_solutions)
 
-                # poređenje sa referentnim
                 print(f"\n=== Instance {inst_name} ===")
                 print(f"Naše najbolje GRASP rešenje: {best_cost:.2f}")
                 print(f"Referentno rešenje min: {ref_min:.2f}, avg: {ref_avg:.2f}")
@@ -127,7 +126,6 @@ class Runner:
                 else:
                     print("➖ Naše rešenje je jednako referentnom min.")
 
-                # upis u CSV
                 gap_min = (best_cost - ref_min) / ref_min * 100
                 gap_avg = (avg_best - ref_avg) / ref_avg * 100
                 writer.writerow([
@@ -141,5 +139,4 @@ class Runner:
                     round(end - start, 3)
                 ])
 
-        print(f"[INFO] Rezultati za wlp01 i wlp02 su sačuvani u {output_file}")
-
+        print(f"[INFO] Rezultati za wlp01 su sačuvani u {output_file}")
