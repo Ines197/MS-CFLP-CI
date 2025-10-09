@@ -12,7 +12,7 @@ class Solver:
         self.rng = random.Random(53)
         self.heuristics = heuristics.Heuristics(self)
 
-    def solve_grasp(self, number_of_iterations: int = 30):
+    def solve_grasp(self, number_of_iterations: int = 60):
         # Inicijalno resetovanje
         self.solution.reset()
         self.problem.facilities.reset()
@@ -35,11 +35,7 @@ class Solver:
 
             # GRASP faze: konstrukcija + lokalno poboljšanje
             self.solve_greedy()
-            self.solve_local_search()
 
-            # Šira pretraga (LNS)
-            self.heuristics.large_neighborhood_search()
-            """
             # Primeni heuristike na nivou postrojenja
             heuristics_list = [
                 self.heuristics.close_one_facility,
@@ -49,17 +45,20 @@ class Solver:
                 self.heuristics.open_one_close_two,
             ]
 
-            # Nasumično permutuj redosled heuristika
-            random.shuffle(heuristics_list)
+            # Izaberi nasumično jednu heuristiku
+            chosen_heuristic = random.choice(heuristics_list)
 
-            # Primeni svaku heuristiku (ako je izvodljiva)
-            for heuristic in heuristics_list:
-                try:
-                    heuristic()
-                except Exception as e:
-                    # Ako neka heuristika zakaže, nastavi dalje bez prekida
-                    print(f"Warning: heuristic {heuristic.__name__} failed with error {e}")
-            """
+            # Pokušaj da je primeni
+            try:
+                chosen_heuristic()
+            except Exception as e:
+                print(f"Warning: heuristic {chosen_heuristic.__name__} failed with error {e}")
+
+            self.solve_local_search()
+
+            # Šira pretraga (LNS)
+            self.heuristics.large_neighborhood_search()
+
             # Evaluiraj novu konfiguraciju
             current_cost = self.solution.total_cost()
 
@@ -74,14 +73,6 @@ class Solver:
         # Postavi najbolje rešenje
         self.solution = best_solution_snapshot
         print(f"GRASP završio. Najbolji trošak: {best_cost:.2f}")
-
-    def apply_facility_heuristics(self):
-        """Apply your 5 facility heuristics to further improve the solution."""
-        h = self.heuristics
-
-        # You can try them in order or randomly pick some
-        h.close_one_facility()
-        h.open_one_facility()
 
     def has_conflict(self, cust_id, already_assigned_ids):
         return any((cust_id, other) in self.problem.incompatibilities for other in already_assigned_ids)
