@@ -40,12 +40,14 @@ class Solution:
         # 1. Svi kupci zadovoljeni
         for cust in self.instance.customers:
             if self.get_total_assigned_to_customer(cust.id) < cust.demand:
+                print("Nije ispunjen demand")
                 return False
 
         # 2. Kapaciteti fabrika
         for fac in self.instance.facilities:
             used = self.facility_used_capacity.get(fac.id, 0)
             if used > fac.capacity:
+                print("Uzeli smo vise nego sto smo smeli")
                 return False
 
         # 3. Inkompatibilnosti
@@ -56,6 +58,7 @@ class Solution:
                     pair = (assigned[i], assigned[j])
                     rev_pair = (assigned[j], assigned[i])
                     if pair in self.instance.incompatibilities or rev_pair in self.instance.incompatibilities:
+                        print("Nekompatibilnost")
                         return False
 
         return True

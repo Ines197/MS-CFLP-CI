@@ -28,7 +28,10 @@ class Facilities:
         return max(self.facilities.values(), key=lambda f: f.capacity)
 
     def sort_by_cost_capacity_ratio(self):
-        return sorted(self.facilities.values(), key=lambda f: f.opening_cost / f.capacity)
+        return sorted(self.facilities.values(), key=self.cost_capacity_ratio_heuristic)
+
+    def cost_capacity_ratio_heuristic(self, facility):
+        return (facility.opening_cost / facility.capacity) + facility.second_part()
 
     def reset(self):
         for f in self.facilities.values():

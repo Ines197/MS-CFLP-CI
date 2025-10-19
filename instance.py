@@ -39,13 +39,16 @@ def parse_instance(filename):
         incompatibilities.add((a, b))
         incompatibilities.add((b, a))
 
-    # --- Build objects ---
-    facilities = [Facility(i, capacity[i], fixed_cost[i]) for i in range(n_fac)]
-    customers = [Customer(i, demand[i]) for i in range(n_cust)]
+    # Build customers
+    customers_list = [Customer(i, demand[i]) for i in range(n_cust)]
+    customers_wrapper = Customers(customers_list)
 
-    # Wrap into containers
-    facilities = Facilities(facilities)
-    customers = Customers(customers)
+    # Build facilities (bez instance)
+    facilities_list = [
+        Facility(i, capacity[i], fixed_cost[i], customers_wrapper)
+        for i in range(n_fac)
+    ]
+    facilities_wrapper = Facilities(facilities_list)
 
     # Build shipping cost dictionary
     shipping_costs = {
@@ -54,4 +57,11 @@ def parse_instance(filename):
         for fac_id in range(n_fac)
     }
 
-    return Instance(facilities, customers, shipping_costs, incompatibilities)
+    # Napravi Instance
+    instance_obj = Instance(facilities_wrapper, customers_wrapper, shipping_costs, incompatibilities)
+
+    # Opcionalno: veži instance za svaki facility ako je potrebno
+    for f in facilities_wrapper.all():
+        f.set_instance(instance_obj)
+
+    return instance_obj
