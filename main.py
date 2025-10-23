@@ -8,5 +8,5 @@ if __name__ == "__main__":
 
     # Pokreni i snimi rezultate u novi csv
     runner.run_one(
-        output_file="one1_ref.csv"
+        output_file="one2.csv"
     )

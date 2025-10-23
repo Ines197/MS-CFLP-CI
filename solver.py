@@ -1,13 +1,8 @@
-import sys
-from typing import Optional, Dict, List, Tuple
-
-from numpy.matlib import empty
+from typing import Dict, List, Tuple
 
 import solution
 import random
 import heuristics
-import instance
-from customers import Customers
 
 
 class Solver:
@@ -17,7 +12,7 @@ class Solver:
         self.rng = random.Random(53)
         self.heuristics = heuristics.Heuristics(self)
 
-    def solve_grasp(self, number_of_iterations: int = 10):
+    def solve_grasp(self, number_of_iterations: int = 50):
 
         # Inicijalno resetovanje
         self.solution.reset()
@@ -95,8 +90,8 @@ class Solver:
         return (fac.opening_cost / fac.capacity) + self.problem.shipping_costs[(cust.id, fac.id)]
 
     def solve_greedy_with_effective_cost(self, tau=4):
-        sorted_facilities = self.problem.facilities.sort_by_cost_capacity_ratio()
 
+        sorted_facilities = self.problem.facilities.sort_by_cost_capacity_ratio()
         for fac in sorted_facilities:
             if self.problem.customers.total_remaining_demand() == 0:
                 break
@@ -105,48 +100,47 @@ class Solver:
             current_assigned_ids = set(self.solution.get_assigned_customers_for_facility(fac.id))
 
             while fac.remaining_capacity > 0 and self.problem.customers.total_remaining_demand() > 0:
+                if fac.remaining_capacity <= 0:
+                    break
                 candidates = []
+
                 for cust in self.problem.customers.customers_with_unmet_demand():
-                    if cust.remaining_demand > fac.remaining_capacity:
-                        #print(f"Facility {fac.id} nema kapacitet za customer {cust.id}: "
-                        #      f"demand={cust.remaining_demand}, cap={fac.remaining_capacity}")
+                    if cust.remaining_demand <= 0:
                         continue
-
-                    # kompatibilnost sa već dodeljenim + sa kandidatima u ovoj iteraciji
-                    all_assigned = current_assigned_ids | {c.id for c, _ in candidates}
-                    compatible = all(
-                        (cust.id, other_id) not in self.problem.incompatibilities and
-                        (other_id, cust.id) not in self.problem.incompatibilities
-                        for other_id in all_assigned
-                    )
-                    if not compatible:
+                    if self.has_conflict(cust.id, current_assigned_ids):
                         continue
-
                     candidates.append((cust, self.effective_cost(fac, cust)))
+                if not candidates:
+                    break
 
-                # Threshold filter i sortiranje...
-                filtered_candidates = []
+                other_open_facilities = [f for f in self.problem.facilities.open_facilities() if f != fac]
+                rcl_list_for_greedy = []
+
                 for cust, eff_cost in candidates:
-                    other_open_facilities = [f for f in self.problem.facilities.open_facilities() if f != fac]
-                    min_eff_cost = self.effective_cost(fac, cust) if not other_open_facilities else min(
-                        self.effective_cost(f, cust) for f in other_open_facilities)
-                    if eff_cost <= tau * min_eff_cost:
-                        filtered_candidates.append((cust, eff_cost))
 
-                if not filtered_candidates:
-                    break  # nema kandidata, izlazimo iz while
+                    if other_open_facilities:
+                        min_eff_cost = min(self.effective_cost(f, cust) for f in other_open_facilities)
+                        if eff_cost > tau * min_eff_cost:
+                            continue
 
-                sorted_candidates = sorted(filtered_candidates, key=lambda x: x[1])
-                for cust, _ in sorted_candidates:
-                    self._assign_customer_to_facility(cust, fac)
-                    current_assigned_ids.add(cust.id)
+                    rcl_list_for_greedy.append((cust, eff_cost))
+                if not rcl_list_for_greedy:
+                    break
 
+                rcl_list_for_greedy.sort(key=lambda x: x[1])
+                chosen_customer = rcl_list_for_greedy[0][0]
+                self._assign_customer_to_facility(chosen_customer, fac)
+                current_assigned_ids.add(chosen_customer.id)
+
+        if self.problem.customers.total_remaining_demand() > 0:
+            print(f"!!! Pokrećem Agresivnu Popravku (Preostalo: {self.problem.customers.total_remaining_demand()})")
+            self.solve_greedy()
         print("Ukupan remaining demand:", self.problem.customers.total_remaining_demand())
 
         if not self.solution.is_valid():
-            print("Greedy solution is invalid!")
+            print("Greedy solution is invalid! ❌")
         else:
-            print("Greedy solution is valid!")
+            print("Greedy solution is valid! ✅")
 
     def solve_greedy(self):
         # Sort facilities once
@@ -190,9 +184,6 @@ class Solver:
             used = self.solution.facility_used_capacity.get(fac_id, 0)
             return fac_by_id[fac_id].capacity - used
 
-        def customers_assigned_to(fac_id: int):
-            return {c_id for (c_id, f_id), amt in self.solution.assignments.items() if f_id == fac_id and amt > 0}
-
         def incompatible_with_any(cust_id: int, other_customers: set) -> bool:
             if hasattr(inst, "incompatibility_graph"):
                 return not inst.incompatibility_graph.get(cust_id, set()).isdisjoint(other_customers)
@@ -209,6 +200,12 @@ class Solver:
         while improved_globally and passes < max_passes:
             improved_globally = False
             passes += 1
+
+            # BUILD MAPPING ONCE PER PASS - this is the key optimization
+            facility_customers = {}
+            for (cust_id, fac_id), amt in self.solution.assignments.items():
+                if amt > 0:
+                    facility_customers.setdefault(fac_id, set()).add(cust_id)
 
             for A in inst.facilities:
                 A_id = A.id
@@ -231,8 +228,8 @@ class Solver:
                         if capB <= 0:
                             continue
 
-                        # incompatibility check
-                        if incompatible_with_any(cust_id, customers_assigned_to(B_id)):
+                        # Use cached mapping instead of function call
+                        if incompatible_with_any(cust_id, facility_customers.get(B_id, set())):
                             continue
 
                         cB = unit_cost(cust_id, B_id)
@@ -261,7 +258,7 @@ class Solver:
                     if best_move is not None:
                         B_id, move_amt = best_move
 
-                        # directly update solution (guaranteed valid due to checks)
+                        # Update solution
                         self.solution.add_assignment(cust_id, B_id, move_amt)
                         self.solution.assignments[(cust_id, A_id)] -= move_amt
                         if self.solution.assignments[(cust_id, A_id)] <= 0:
@@ -271,6 +268,11 @@ class Solver:
                         if self.solution.facility_used_capacity[A_id] <= 0:
                             self.solution.facility_used_capacity.pop(A_id, None)
                             self.solution.facilities_open.discard(A_id)
+
+                        # UPDATE THE CACHE - this is critical!
+                        facility_customers.setdefault(B_id, set()).add(cust_id)
+                        if abs(self.solution.assignments.get((cust_id, A_id), 0)) <= EPS:
+                            facility_customers.get(A_id, set()).discard(cust_id)
 
                         improved_globally = True
 
