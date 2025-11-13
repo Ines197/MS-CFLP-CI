@@ -17,7 +17,7 @@ class Solver:
         self.rng = random.Random(53)
         self.heuristics = heuristics.Heuristics(self)
 
-    def solve_grasp(self, number_of_iterations: int = 10):
+    def solve_grasp(self, number_of_iterations: int = 1):
 
         # Inicijalno resetovanje
         self.solution.reset()
@@ -26,8 +26,9 @@ class Solver:
         self.heuristics.customer_rcl.reset()
 
         # Prvi greedy + lokalna pretraga kao početno rešenje
-        self.solve_greedy_with_effective_cost()
-        self.solve_local_search()
+        #self.solve_greedy_with_effective_cost()
+        self.solve_greedy()
+        #self.solve_local_search()
 
         best_cost = self.solution.total_cost()
         best_solution_snapshot = self.solution.copy()
@@ -43,27 +44,27 @@ class Solver:
             self.solve_greedy_with_effective_cost()
 
             # Primeni heuristike na nivou postrojenja
-            heuristics_list = [
-                self.heuristics.close_one_facility,
-                self.heuristics.open_one_facility,
-                self.heuristics.close_one_open_one,
-                self.heuristics.close_one_open_two,
-                self.heuristics.open_one_close_two,
-            ]
+            #heuristics_list = [
+            #    self.heuristics.close_one_facility,
+            #    self.heuristics.open_one_facility,
+            #    self.heuristics.close_one_open_one,
+            #    self.heuristics.close_one_open_two,
+            #    self.heuristics.open_one_close_two,
+            #]
 
             # Izaberi nasumično jednu heuristiku
-            chosen_heuristic = random.choice(heuristics_list)
+            #chosen_heuristic = random.choice(heuristics_list)
 
             # Pokušaj da je primeni
-            try:
-                chosen_heuristic()
-            except Exception as e:
-                print(f"Warning: heuristic {chosen_heuristic.__name__} failed with error {e}")
+            #try:
+            #    chosen_heuristic()
+            #except Exception as e:
+            #    print(f"Warning: heuristic {chosen_heuristic.__name__} failed with error {e}")
 
-            self.solve_local_search()
+            #self.solve_local_search()
 
             # Šira pretraga (LNS)
-            self.heuristics.large_neighborhood_search()
+            #self.heuristics.large_neighborhood_search()
 
             # Evaluiraj novu konfiguraciju
             current_cost = self.solution.total_cost()
@@ -94,59 +95,84 @@ class Solver:
     def effective_cost(self, fac, cust):
         return (fac.opening_cost / fac.capacity) + self.problem.shipping_costs[(cust.id, fac.id)]
 
-    def solve_greedy_with_effective_cost(self, tau=4):
+    def precompute_effective_costs(self):
+        """
+        Prekomputuje efektivne troškove za sve parove (facility, customer)
+        i čuva ih u rečniku self.effective_cost_matrix.
+        """
+        self.effective_cost_matrix = {}
+
+        facilities = self.problem.facilities.all()
+        customers = self.problem.customers.all()
+
+        for fac in facilities:
+            base_cost = fac.opening_cost / fac.capacity
+            for cust in customers:
+                ship_cost = self.problem.shipping_costs[(cust.id, fac.id)]
+                self.effective_cost_matrix[(fac.id, cust.id)] = base_cost + ship_cost
+
+    def solve_greedy_with_effective_cost(self, tau=1.5):
+        self.precompute_effective_costs()  # prekomputuje sve troškove
         sorted_facilities = self.problem.facilities.sort_by_cost_capacity_ratio()
 
-        for fac in sorted_facilities:
-            if self.problem.customers.total_remaining_demand() == 0:
-                break
+        # inicijalizujemo skup nedodeljenih kupaca
+        unmet_customers = {c.id: c for c in self.problem.customers.customers_with_unmet_demand()}
 
+        # čuvamo minimum efektivnog troška po kupcu za trenutno otvorena postrojenja
+        min_eff_cost_open_facility = {}  # {cust_id: min_eff_cost}
+
+        for fac in sorted_facilities:
+            if not unmet_customers:
+                break
             fac.open()
             current_assigned_ids = set(self.solution.get_assigned_customers_for_facility(fac.id))
 
-            while fac.remaining_capacity > 0 and self.problem.customers.total_remaining_demand() > 0:
+            # ažuriramo min_eff_cost za sve kupce zbog novog otvorenog postrojenja
+            for cust_id, cust in unmet_customers.items():
+                eff_cost = self.effective_cost_matrix[(fac.id, cust_id)]
+                if cust_id not in min_eff_cost_open_facility:
+                    min_eff_cost_open_facility[cust_id] = eff_cost
+                else:
+                    min_eff_cost_open_facility[cust_id] = min(min_eff_cost_open_facility[cust_id], eff_cost)
+
+            while fac.remaining_capacity > 0 and unmet_customers:
                 candidates = []
-                for cust in self.problem.customers.customers_with_unmet_demand():
-                    if cust.remaining_demand > fac.remaining_capacity:
-                        #print(f"Facility {fac.id} nema kapacitet za customer {cust.id}: "
-                        #      f"demand={cust.remaining_demand}, cap={fac.remaining_capacity}")
+
+                for cust in unmet_customers.values():
+                    if self.has_conflict(cust.id, current_assigned_ids):
                         continue
+                    eff_cost = self.effective_cost_matrix[(fac.id, cust.id)]
+                    # koristimo O(1) min_eff_cost među otvorenim postrojenjima
+                    min_eff_cost = min_eff_cost_open_facility.get(cust.id, eff_cost)
+                    if other_open_facilities := [f for f in self.problem.facilities.open_facilities() if f != fac]:
+                        if eff_cost > tau * min_eff_cost:
+                            continue
+                    candidates.append((cust, eff_cost))
 
-                    # kompatibilnost sa već dodeljenim + sa kandidatima u ovoj iteraciji
-                    all_assigned = current_assigned_ids | {c.id for c, _ in candidates}
-                    compatible = all(
-                        (cust.id, other_id) not in self.problem.incompatibilities and
-                        (other_id, cust.id) not in self.problem.incompatibilities
-                        for other_id in all_assigned
-                    )
-                    if not compatible:
-                        continue
+                if not candidates:
+                    break
 
-                    candidates.append((cust, self.effective_cost(fac, cust)))
+                # biramo kupca sa najmanjim efektivnim troškom
+                chosen_customer = min(candidates, key=lambda x: x[1])[0]
 
-                # Threshold filter i sortiranje...
-                filtered_candidates = []
-                for cust, eff_cost in candidates:
-                    other_open_facilities = [f for f in self.problem.facilities.open_facilities() if f != fac]
-                    min_eff_cost = self.effective_cost(fac, cust) if not other_open_facilities else min(
-                        self.effective_cost(f, cust) for f in other_open_facilities)
-                    if eff_cost <= tau * min_eff_cost:
-                        filtered_candidates.append((cust, eff_cost))
+                self._assign_customer_to_facility(chosen_customer, fac)
+                current_assigned_ids.add(chosen_customer.id)
 
-                if not filtered_candidates:
-                    break  # nema kandidata, izlazimo iz while
+                # uklanjamo kupca iz nedodeljenih ako je njegova preostala potražnja sada 0
+                if chosen_customer.remaining_demand <= 0:
+                    unmet_customers.pop(chosen_customer.id)
+                    min_eff_cost_open_facility.pop(chosen_customer.id, None)
 
-                sorted_candidates = sorted(filtered_candidates, key=lambda x: x[1])
-                for cust, _ in sorted_candidates:
-                    self._assign_customer_to_facility(cust, fac)
-                    current_assigned_ids.add(cust.id)
+        if self.problem.customers.total_remaining_demand() > 0:
+            print(f"!!! Pokrećem Agresivnu Popravku (Preostalo: {self.problem.customers.total_remaining_demand()})")
+            self.solve_greedy()
 
         print("Ukupan remaining demand:", self.problem.customers.total_remaining_demand())
 
         if not self.solution.is_valid():
-            print("Greedy solution is invalid!")
+            print("Greedy solution is invalid! ❌")
         else:
-            print("Greedy solution is valid!")
+            print("Greedy solution is valid! ✅")
 
     def solve_greedy(self):
         # Sort facilities once
