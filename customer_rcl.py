@@ -16,10 +16,6 @@ class CustomerRCL:
             self.eligible[fac.id] = customers
 
     def get_candidates(self, facility, tau=1.0):
-        """
-        Returns the list of customers eligible for the facility,
-        filtered by tau threshold.
-        """
         if facility.id not in self.eligible:
             return []
 
@@ -28,12 +24,10 @@ class CustomerRCL:
 
         for cust in self.eligible[facility.id]:
             eff_cost = (facility.opening_cost / facility.capacity) + self.problem.shipping_costs[(cust.id, facility.id)]
-
-            # compute best alternative cost among other facilities
             best_alt = min(
                 (f.opening_cost / f.capacity) + self.problem.shipping_costs[(cust.id, f.id)]
                 for f in U_f
-            ) if U_f else eff_cost  # ako nema drugih fabrika, eff_cost je ok
+            ) if U_f else eff_cost
 
             if eff_cost <= tau * best_alt:
                 candidates.append(cust)
@@ -41,7 +35,6 @@ class CustomerRCL:
         return candidates
 
     def remove_customer(self, cust_id):
-        # ukloni kupca iz eligible liste svih fabrika
         for fac_id in self.eligible:
             self.eligible[fac_id] = [c for c in self.eligible[fac_id] if c.id != cust_id]
 

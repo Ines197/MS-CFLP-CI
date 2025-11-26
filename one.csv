@@ -1,2 +1,0 @@
-inst,J,best_cost,avg_bestK,avg_per_run,ref_min,ref_avg,gap_min(%),gap_avg(%),timeout(s),actual_time(s),iterations,iter_per_sec
-wlp01,50,33412,33619.9,33724.1,34377.0,34377.0,-2.81,-2.2,176.8,177.3,1940,10.9

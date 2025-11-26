@@ -40,7 +40,7 @@ class GreedyEffectiveSolver:
 
         # Benchmarking
         self.stats = {
-            'precompute_time': 0,
+            'precompute_time': 0.0,
             'iterations': 0,
             'tau_filter_hits': 0,
             'conflict_checks': 0,
@@ -207,21 +207,21 @@ class GreedyEffectiveSolver:
             update_mode: 'incremental', 'batch', 'lazy', ili 'hybrid'
         """
 
-        print(f"\n{'=' * 70}")
-        print(f"🚀 Optimizovani Global Greedy")
-        print(f"{'=' * 70}")
-        print(f"Parametri: α={alpha}, β={beta}, τ={tau}, top_k={top_k}")
-        print(f"Update mode: {update_mode}")
-        print(f"{'=' * 70}\n")
+        #print(f"\n{'=' * 70}")
+        #print(f"🚀 Optimizovani Global Greedy")
+        #print(f"{'=' * 70}")
+        #print(f"Parametri: α={alpha}, β={beta}, τ={tau}, top_k={top_k}")
+        #print(f"Update mode: {update_mode}")
+        #print(f"{'=' * 70}\n")
 
         start_time = time.time()
         self.precompute_effective_costs()
 
         if tau is None:
             tau = self.compute_adaptive_tau()
-            print(f"📊 Computed adaptive τ = {tau:.3f}")
-        else:
-            print(f"📊 Using fixed τ = {tau:.3f}")
+            #print(f"📊 Computed adaptive τ = {tau:.3f}")
+        #else:
+            #print(f"📊 Using fixed τ = {tau:.3f}")
 
         facilities = list(self.problem.facilities.all())
         customers = list(self.problem.customers.all())
@@ -278,8 +278,8 @@ class GreedyEffectiveSolver:
                 # No facilities open yet: use base cost with relaxed tau
                 effective_min = base_min_cost[active_cust_arr]
                 effective_tau = tau * 3.0  # More relaxed for initial iterations
-                print(
-                    f"  Iteration {iteration_count}: Using relaxed tau ({effective_tau:.2f}) - no facilities open yet")
+                #print(
+                #    f"  Iteration {iteration_count}: Using relaxed tau ({effective_tau:.2f}) - no facilities open yet")
             else:
                 # Use actual minimum from open facilities where available
                 effective_min = np.where(
@@ -299,7 +299,7 @@ class GreedyEffectiveSolver:
             if not np.isfinite(eff_sub).any():
                 # Lazy update: ako tau eliminiše sve, ažuriraj i pokušaj ponovo
                 if update_mode == 'lazy' and len(open_fac_indices) > 0:
-                    print(f"⚙️ Lazy update triggered at iteration {self.stats['iterations']}")
+                    #print(f"⚙️ Lazy update triggered at iteration {self.stats['iterations']}")
                     active_cust_list = list(active_custs)
                     min_eff_cost[active_cust_list] = np.min(
                         self.effective_cost_matrix[np.ix_(
@@ -309,7 +309,7 @@ class GreedyEffectiveSolver:
                     )
                     continue
                 else:
-                    print(f"⚠️ Iteracija {self.stats['iterations']}: Tau filter eliminisao sve kandidate!")
+                    #print(f"⚠️ Iteracija {self.stats['iterations']}: Tau filter eliminisao sve kandidate!")
                     break
 
             # Top-k najboljih parova (RCL pristup)
@@ -346,7 +346,7 @@ class GreedyEffectiveSolver:
                         valid_triples.append((c_idx, f_idx, q, eff_cost))
 
             if not valid_triples:
-                print(f"⚠️ Iteracija {self.stats['iterations']}: Nema validnih parova bez konflikta!")
+                #print(f"⚠️ Iteracija {self.stats['iterations']}: Nema validnih parova bez konflikta!")
                 break
 
             # RCL sa beta parametrom
@@ -449,17 +449,17 @@ class GreedyEffectiveSolver:
         # Fallback ako ostane neraspoređeno
         remaining = self.problem.customers.total_remaining_demand()
         if remaining > 0:
-            print(f"\n⚠️ Pokrećem fallback greedy (preostalo: {remaining:.2f})")
+            #print(f"\n⚠️ Pokrećem fallback greedy (preostalo: {remaining:.2f})")
             self.solve_greedy()
 
         total_time = time.time() - start_time
 
         # Statistika
-        print(f"\n{'=' * 70}")
+        #print(f"\n{'=' * 70}")
         #print(f"📊 REZULTATI I STATISTIKA")
         #print(f"{'=' * 70}")
-        print(f"✅ Validnost: {'VALID ✓' if self.solution.is_valid() else 'INVALID ✗'}")
-        print(f"💰 Ukupan trošak: {self.solution.total_cost():,.2f}")
+        #print(f"✅ Validnost: {'VALID ✓' if self.solution.is_valid() else 'INVALID ✗'}")
+        #print(f"💰 Ukupan trošak: {self.solution.total_cost():,.2f}")
         #print(f"🏭 Otvorenih fabrika: {self.stats['facilities_opened']}")
         #print(f"🔄 Iteracija: {self.stats['iterations']}")
         #print(f"📦 Preostala potražnja: {remaining:.2f}")
@@ -471,7 +471,7 @@ class GreedyEffectiveSolver:
         #print(f"  • Tau filter eliminacija: {self.stats['tau_filter_hits']:,}")
         #print(f"  • Provera konflikata: {self.stats['conflict_checks']:,}")
         #print(f"  • Ažuriranja min_cost: {self.stats['min_cost_updates']}")
-        print(f"{'=' * 70}\n")
+        #print(f"{'=' * 70}\n")
 
         return self.solution
 
@@ -509,7 +509,7 @@ class GreedyEffectiveSolver:
                 except Exception:
                     pass
 
-        print(f"Fallback greedy: {'✅ Valid' if self.solution.is_valid() else '❌ Invalid'}")
+        #print(f"Fallback greedy: {'✅ Valid' if self.solution.is_valid() else '❌ Invalid'}")
 
     def has_conflict(self, cust_id, already_assigned_ids):
         """

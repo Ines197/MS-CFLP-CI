@@ -6,3 +6,4 @@ class Customer:
 
     def reset(self):
         self.remaining_demand = self.demand
+

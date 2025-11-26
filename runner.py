@@ -1,307 +1,271 @@
+import csv
+import time
+from typing import List, Dict, Any
+import numpy as np
+
 from bestsolutions import BestSolutions
 from greedyeffective import GreedyEffectiveSolver
 from solution import Solution
-from solver import Solver
 from instance import parse_instance
-import csv
-import time
-import math
+from greedymultifacility import GreedyMultiFacilitySolver
+from extendedrankgreedy import ExtendedRankGreedySolver
 
 
 class Runner:
-    def __init__(self, reference_file: str, instances_folder: str, cpu_adjustment: float = 2.5):
+    def __init__(self, reference_file: str, instances_folder: str):
         """
         Args:
-            reference_file: Path to CSV with reference results
+            reference_file: Path to CSV with reference results (references2.csv)
             instances_folder: Path to folder with .dzn instance files
-            cpu_adjustment: Multiplier for timeout (default 2.5x for i5-1135G7 vs Threadripper)
         """
         self.reference_file = reference_file
         self.instances_folder = instances_folder
-        self.cpu_adjustment = cpu_adjustment
         self.reference_results = self._load_reference_results()
+        self.tau_cache = {}
 
     def _load_reference_results(self) -> dict:
+        """Loads reference Best Known values."""
         reference = {}
-        with open(self.reference_file, mode="r") as f:
-            reader = csv.DictReader(f)
-            for row in reader:
-                inst = row["inst"]
-                ref_min = float(row["min"])
-                ref_avg = float(row["avg"])
-                reference[inst] = (ref_min, ref_avg)
+        try:
+            with open(self.reference_file, mode="r") as f:
+                reader = csv.DictReader(f)
+                for row in reader:
+                    # Adjust column names based on your actual CSV format
+                    # Assuming keys are 'inst', 'min' (or 'best'), 'avg'
+                    inst = row.get("inst", row.get("instance", ""))
+                    ref_min = float(row.get("min", row.get("best", 0)))
+                    ref_avg = float(row.get("avg", 0))
+                    reference[inst] = (ref_min, ref_avg)
+        except Exception as e:
+            print(f"[ERROR] Could not load reference file: {e}")
         return reference
 
-    def _get_timeout(self, num_facilities: int, mode: str = 'competition', adjust: bool = True) -> float:
+    def _compute_and_cache_tau(self, instance_name: str, problem) -> float:
+        """Computes tau once per instance for the Effective cost heuristics."""
+        if instance_name not in self.tau_cache:
+            temp_solver = GreedyEffectiveSolver(problem, Solution(problem))
+            temp_solver.precompute_effective_costs()
+            tau = temp_solver.compute_adaptive_tau()
+            self.tau_cache[instance_name] = tau
+        return self.tau_cache[instance_name]
+
+    def compare_instance(self,
+                         instance_name: str,
+                         time_limit: float = 120.0,
+                         include_all_heuristics: bool = True,
+                         output_csv: str = "comparison_results5.csv"):
         """
-        Calculate timeout based on paper's methodology.
+        Runs comparison for a single instance.
 
         Args:
-            num_facilities: Number of facilities (J) in the instance
-            mode: 'competition' (10√J) or 'linear' (J)
-            adjust: Whether to apply CPU speed adjustment
-
-        Returns:
-            Timeout in seconds
+            instance_name: e.g., "wlp01"
+            time_limit: Time in seconds (default 300s = 5mins)
+            include_all_heuristics: If True, runs Extended Greedy modes 1, 2, and 3.
+                                    If False, only runs mode 1.
         """
-        if mode == 'competition':
-            base_timeout = 10 * math.sqrt(num_facilities)
-        elif mode == 'linear':
-            base_timeout = num_facilities
-        else:
-            raise ValueError(f"Invalid mode: {mode}. Use 'competition' or 'linear'")
 
-        if adjust:
-            return base_timeout * self.cpu_adjustment
-        return base_timeout
-
-    def profile(fnc):
-        def inner(*args, **kwargs):
-            import cProfile, pstats, io
-            pr = cProfile.Profile()
-            pr.enable()
-            retval = fnc(*args, **kwargs)
-            pr.disable()
-            s = io.StringIO()
-            sortby = 'cumulative'
-            ps = pstats.Stats(pr, stream=s).sort_stats(sortby)
-            ps.print_stats()
-            print(s.getvalue())
-            return retval
-
-        return inner
-
-    @profile
-    def run_all(self, output_file: str = "comparison.csv",
-                num_runs: int = 10,
-                timeout_mode: str = 'competition',
-                adjust_for_cpu: bool = True,
-                top_k: int = 10):
-        """
-        Run solver for all instances with time-based limits (like in the paper).
-
-        Args:
-            output_file: CSV file to save results
-            num_runs: Number of independent runs (paper uses 10)
-            timeout_mode: 'competition' (10√J) or 'linear' (J seconds)
-            adjust_for_cpu: Whether to adjust timeout for CPU speed difference
-            top_k: Keep best K solutions for averaging
-        """
-        with open(output_file, mode="w", newline="") as f:
-            writer = csv.writer(f)
-            writer.writerow([
-                "inst", "J", "best_cost", "avg_bestK", "ref_min", "ref_avg",
-                "gap_min(%)", "gap_avg(%)", "timeout(s)", "actual_time(s)", "iterations"
-            ])
-
-            for inst_name, (ref_min, ref_avg) in self.reference_results.items():
-                filename = f"{self.instances_folder}/{inst_name}.dzn"
-                problem = parse_instance(filename)
-
-                num_facilities = len(list(problem.facilities.all()))
-                timeout = self._get_timeout(num_facilities, timeout_mode, adjust_for_cpu)
-
-                print(f"\n{'=' * 70}")
-                print(f"Instance: {inst_name}")
-                print(f"Facilities: {num_facilities}, Timeout: {timeout:.1f}s")
-                print(f"{'=' * 70}")
-
-                best_solutions = BestSolutions(top_k)
-                total_iterations = 0
-
-                run_start = time.time()
-
-                for run_num in range(num_runs):
-                    problem.reset()
-
-                    # Time limit for this single run
-                    run_timeout = timeout / num_runs  # Divide total time among runs
-                    run_deadline = time.time() + run_timeout
-
-                    iterations_this_run = 0
-
-                    # Keep running solver until time limit
-                    while time.time() < run_deadline:
-                        problem.reset()
-                        solver = GreedyEffectiveSolver(
-                            problem,
-                            Solution(problem),
-                            rng_seed=int(time.time() * 1000 + run_num)
-                        )
-                        solver.solve_greedy_global_effective()
-
-                        if solver.solution.is_valid():
-                            best_solutions.add(solver.solution)
-
-                        iterations_this_run += 1
-                        total_iterations += 1
-
-                    print(f"  Run {run_num + 1}/{num_runs}: {iterations_this_run} iterations")
-
-                run_end = time.time()
-                actual_time = run_end - run_start
-
-                if len(best_solutions) == 0:
-                    print(f"[WARN] No valid solutions for {inst_name}")
-                    continue
-
-                best_cost = best_solutions.best().total_cost()
-                avg_best = sum(sol.total_cost() for sol in best_solutions.get_solutions()) / len(best_solutions)
-
-                gap_min = (best_cost - ref_min) / ref_min * 100
-                gap_avg = (avg_best - ref_avg) / ref_avg * 100
-
-                print(f"\n📊 Results:")
-                print(f"  Best cost: {best_cost:,.2f} (ref: {ref_min:,.2f})")
-                print(f"  Avg top-{top_k}: {avg_best:,.2f} (ref: {ref_avg:,.2f})")
-                print(f"  Gap min: {gap_min:+.2f}%")
-                print(f"  Gap avg: {gap_avg:+.2f}%")
-                print(f"  Total iterations: {total_iterations}")
-
-                writer.writerow([
-                    inst_name,
-                    num_facilities,
-                    round(best_cost, 2),
-                    round(avg_best, 2),
-                    ref_min,
-                    ref_avg,
-                    round(gap_min, 2),
-                    round(gap_avg, 2),
-                    round(timeout, 1),
-                    round(actual_time, 1),
-                    total_iterations
-                ])
-
-        print(f"\n[INFO] Results saved to {output_file}")
-
-    @profile
-    def run_one(self, instance_name: str = "wlp01",
-                output_file: str = "comparison_single.csv",
-                timeout_mode: str = 'competition',
-                adjust_for_cpu: bool = True,
-                num_runs: int = 10,
-                top_k: int = 10):
-        """
-        Run solver for a single instance with time-based limit.
-
-        Args:
-            instance_name: Name of instance (e.g., 'wlp01')
-            output_file: CSV file to save results
-            timeout_mode: 'competition' (10√J) or 'linear' (J seconds)
-            adjust_for_cpu: Whether to adjust timeout for CPU speed difference
-            num_runs: Number of independent runs (paper uses 10)
-            top_k: Keep best K solutions for averaging
-        """
-        if instance_name not in self.reference_results:
-            print(f"[ERROR] Instance {instance_name} not in reference results")
+        # 1. Setup Instance
+        filename = f"{self.instances_folder}/{instance_name}.dzn"
+        try:
+            problem = parse_instance(filename)
+        except FileNotFoundError:
+            print(f"[ERROR] Instance file not found: {filename}")
             return
 
-        ref_min, ref_avg = self.reference_results[instance_name]
-        filename = f"{self.instances_folder}/{instance_name}.dzn"
-        problem = parse_instance(filename)
+        ref_min, ref_avg = self.reference_results.get(instance_name, (0.0, 0.0))
+        tau = self._compute_and_cache_tau(instance_name, problem)
 
-        num_facilities = len(list(problem.facilities.all()))
-        timeout = self._get_timeout(num_facilities, timeout_mode, adjust_for_cpu)
+        print(f"\n{'=' * 100}")
+        print(f"INSTANCE: {instance_name} | Limit: {time_limit}s | Ref Best: {ref_min}")
+        print(f"{'=' * 100}")
 
-        best_solutions = BestSolutions(top_k)
-        total_iterations = 0
-        costs_per_run = []
+        # 2. Define Algorithms to Run
+        # Structure: (DisplayName, SolverClass, MethodName, InitKwargs, RunKwargs)
 
-        overall_start = time.time()
+        alg_configs = []
 
-        for run_num in range(num_runs):
-            problem.reset()
+        # A. Greedy Effective
+        alg_configs.append({
+            'name': "Global Eff.",
+            'class': GreedyEffectiveSolver,
+            'method': 'solve_greedy_global_effective',
+            'kwargs': {},
+            'run_args': {'tau': tau}
+        })
 
-            # Time limit for this single run
-            run_timeout = timeout / num_runs
-            run_deadline = time.time() + run_timeout
+        # B. Multi Facility
+        alg_configs.append({
+            'name': "Multi Fac.",
+            'class': GreedyMultiFacilitySolver,
+            'method': 'solve_greedy_multiple_facility',
+            'kwargs': {},
+            'run_args': {}
+        })
 
-            iterations_this_run = 0
-            best_cost_this_run = float('inf')
+        # C. Extended Greedy (Mode 1)
+        alg_configs.append({
+            'name': "Ext. AOC (1)",
+            'class': ExtendedRankGreedySolver,
+            'method': 'solve_extended_greedy',
+            'kwargs': {'heuristic_mode': 1, 'rank_cutoff_X': 0.2},
+            'run_args': {}
+        })
 
-            # Keep running solver until time limit
-            while time.time() < run_deadline:
+        # D. Optional Extended Modes
+        if include_all_heuristics:
+            alg_configs.append({
+                'name': "Ext. Trans (2)",
+                'class': ExtendedRankGreedySolver,
+                'method': 'solve_extended_greedy',
+                'kwargs': {'heuristic_mode': 2, 'rank_cutoff_X': 0.2},
+                'run_args': {}
+            })
+            alg_configs.append({
+                'name': "Ext. Top5 (3)",
+                'class': ExtendedRankGreedySolver,
+                'method': 'solve_extended_greedy',
+                'kwargs': {'heuristic_mode': 3, 'rank_cutoff_X': 0.2},
+                'run_args': {}
+            })
+
+        # 3. Run Algorithms
+        results_data = {}  # Key: Alg Name, Value: Dict of metrics
+
+        # Add Reference Data manually
+        results_data["Reference"] = {
+            'best_cost': ref_min,
+            'avg_cost': ref_avg,
+            'iterations': 0,
+            #'time': 0,
+            #'gap': 0.0
+        }
+
+        for config in alg_configs:
+            name = config['name']
+            print(f"Running {name}...", end=" ", flush=True)
+
+            # Run Logic
+            best_solutions = BestSolutions(10)
+            total_iters = 0
+            start_t = time.time()
+            deadline = start_t + time_limit
+
+            # Simple seed generation
+            rng_seed = 42
+
+            while time.time() < deadline:
                 problem.reset()
-                solver = GreedyEffectiveSolver(
+
+                # Instantiate
+                solver = config['class'](
                     problem,
                     Solution(problem),
-                    rng_seed=int(time.time() * 1000000 + run_num * 1000 + iterations_this_run)
+                    rng_seed=rng_seed + total_iters,
+                    **config['kwargs']
                 )
-                solver.solve_greedy_global_effective()
+
+                # Run method
+                method = getattr(solver, config['method'])
+                method(**config['run_args'])
 
                 if solver.solution.is_valid():
-                    cost = solver.solution.total_cost()
                     best_solutions.add(solver.solution)
-                    best_cost_this_run = min(best_cost_this_run, cost)
 
-                iterations_this_run += 1
-                total_iterations += 1
+                total_iters += 1
 
-            costs_per_run.append(best_cost_this_run)
-            print(f"Run {run_num + 1:2d}/{num_runs}: {iterations_this_run:4d} iterations, "
-                  f"best: {best_cost_this_run:,.2f}")
+            actual_time = time.time() - start_t
+            print(f"Done ({total_iters} iters)")
 
-        overall_end = time.time()
-        actual_time = overall_end - overall_start
+            # Process Results
+            if len(best_solutions) > 0:
+                best_cost = best_solutions.best().total_cost()
+                avg_cost = sum(s.total_cost() for s in best_solutions.get_solutions()) / len(best_solutions)
+                # Calculate Gap % vs Reference Min
+                #gap = ((best_cost - ref_min) / ref_min * 100) if ref_min > 0 else 0.0
+            else:
+                best_cost = float('inf')
+                avg_cost = float('inf')
+                #gap = float('inf')
 
-        if len(best_solutions) == 0:
-            print(f"\n[ERROR] No valid solutions found!")
-            return
+            results_data[name] = {
+                'best_cost': best_cost,
+                'avg_cost': avg_cost,
+                'iterations': total_iters,
+                #'time': actual_time,
+                #'gap': gap
+            }
 
-        best_cost = best_solutions.best().total_cost()
-        avg_best = sum(sol.total_cost() for sol in best_solutions.get_solutions()) / len(best_solutions)
-        avg_per_run = sum(costs_per_run) / len(costs_per_run)
+        # 4. Format Output (Rows = Metrics, Cols = Algs)
 
-        gap_min = (best_cost - ref_min) / ref_min * 100
-        gap_avg = (avg_best - ref_avg) / ref_avg * 100
+        # Define the column order
+        alg_names = ["Reference"] + [cfg['name'] for cfg in alg_configs]
 
-        print(f"\n{'=' * 70}")
-        print(f"📊 FINAL RESULTS FOR {instance_name}")
-        print(f"{'=' * 70}")
-        print(f"Best solution found:     {best_cost:>12,.2f}")
-        print(f"Avg of top-{top_k:2d}:          {avg_best:>12,.2f}")
-        print(f"Avg across runs:         {avg_per_run:>12,.2f}")
-        print(f"")
-        print(f"Reference min (paper):   {ref_min:>12,.2f}")
-        print(f"Reference avg (paper):   {ref_avg:>12,.2f}")
-        print(f"")
-        print(f"Gap vs ref min:          {gap_min:>11.2f}%")
-        print(f"Gap vs ref avg:          {gap_avg:>11.2f}%")
-        print(f"")
-        print(f"Total iterations:        {total_iterations:>12,d}")
-        print(f"Iterations per second:   {total_iterations / actual_time:>12,.1f}")
-        print(f"Actual time:             {actual_time:>12.1f}s")
-        print(f"{'=' * 70}\n")
+        # Define rows to display
+        rows_definitions = [
+            ('Best Cost', 'best_cost', '{:,.2f}'),
+            #('Gap (%)', 'gap', '{:+.2f}%'),
+            ('Avg Cost', 'avg_cost', '{:,.2f}'),
+            ('Iterations', 'iterations', '{:,d}'),
+            #('Time (s)', 'time', '{:.1f}')
+        ]
 
-        if best_cost < ref_min:
-            print("✅ Our solution is BETTER than reference min!")
-        elif best_cost > ref_min:
-            print(f"❌ Our solution is {gap_min:.2f}% worse than reference min.")
-        else:
-            print("➖ Our solution equals reference min.")
+        # -- Print to Console --
+        # Header
+        header_str = f"{'Metric':<15}"
+        for alg in alg_names:
+            header_str += f" | {alg:<12}"
+        print("-" * len(header_str))
+        print(header_str)
+        print("-" * len(header_str))
 
-        # Save results
-        with open(output_file, mode="w", newline="") as f:
+        for row_label, data_key, fmt in rows_definitions:
+            row_str = f"{row_label:<15}"
+            for alg in alg_names:
+                val = results_data[alg].get(data_key, 0)
+
+                # Handle Reference special cases (Time/Iter is N/A)
+                if alg == "Reference" and data_key in ['time', 'iterations']:
+                    val_str = " - "
+                elif alg == "Reference" and data_key == 'gap':
+                    val_str = " 0.00% "
+                else:
+                    val_str = fmt.format(val)
+
+                row_str += f" | {val_str:>12}"
+            print(row_str)
+        print("-" * len(header_str))
+
+        # -- Save to CSV (Transposed) --
+        # We append to the file so we can run multiple instances in a loop outside
+        file_exists = False
+        try:
+            with open(output_csv, 'r') as f:
+                file_exists = True
+        except FileNotFoundError:
+            pass
+
+        with open(output_csv, mode='a', newline='') as f:
             writer = csv.writer(f)
-            writer.writerow([
-                "inst", "J", "best_cost", "avg_bestK", "avg_per_run",
-                "ref_min", "ref_avg", "gap_min(%)", "gap_avg(%)",
-                "timeout(s)", "actual_time(s)", "iterations", "iter_per_sec"
-            ])
-            writer.writerow([
-                instance_name,
-                num_facilities,
-                round(best_cost, 2),
-                round(avg_best, 2),
-                round(avg_per_run, 2),
-                ref_min,
-                ref_avg,
-                round(gap_min, 2),
-                round(gap_avg, 2),
-                round(timeout, 1),
-                round(actual_time, 1),
-                total_iterations,
-                round(total_iterations / actual_time, 1)
-            ])
 
-        print(f"[INFO] Results saved to {output_file}")
+            # If new file, write header with first column being Instance + Metric
+            if not file_exists:
+                headers = ["Instance", "Metric"] + alg_names
+                writer.writerow(headers)
+
+            # Write data
+            for row_label, data_key, fmt in rows_definitions:
+                row_data = [instance_name, row_label]
+                for alg in alg_names:
+                    val = results_data[alg].get(data_key, 0)
+                    if alg == "Reference" and data_key in ['time', 'iterations']:
+                        row_data.append("-")
+                    else:
+                        row_data.append(val)
+                writer.writerow(row_data)
+
+            writer.writerow([])
+
+    def compare_all(self, time_limit: float = 100.0, include_all_heuristics: bool = True):
+        """Loop through all loaded reference instances."""
+        for inst in self.reference_results.keys():
+            self.compare_instance(inst, time_limit, include_all_heuristics)

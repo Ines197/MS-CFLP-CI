@@ -7,6 +7,4 @@ if __name__ == "__main__":
     )
 
     # Pokreni i snimi rezultate u novi csv
-    runner.run_all(
-        output_file="all_final.csv"
-    )
+    runner.compare_all()
