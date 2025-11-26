@@ -1,0 +1,2 @@
+inst,best_cost,avg_bestK,ref_min,ref_avg,gap_min(%),gap_avg(%),time(s)
+wlp01,31861.22,32072.44,30040.0,30195.0,6.06,6.22,157.225

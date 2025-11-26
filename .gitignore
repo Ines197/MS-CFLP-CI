@@ -1,1 +1,3 @@
 Instances/*.dzn
+__pycache__/
+*.pyc

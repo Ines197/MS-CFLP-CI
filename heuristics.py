@@ -394,37 +394,56 @@ class Heuristics:
             for f_id in facs_to_close:
                 assigned_customers = sol.get_assigned_customers_for_facility(f_id)
                 for c_id in assigned_customers:
+                    # Uzmi dodeljenu kolicinu iz dodeljenog skupa
                     amt = sol.assignments.pop((c_id, f_id), 0)
-                    sol.customer_supply[c_id] -= amt
+
+                    # ODBRAMBENA ISPRAVKA: Proveravamo pre smanjenja i uklanjamo ako je nula
+                    sol.customer_supply[c_id] = sol.customer_supply.get(c_id, 0) - amt
+                    if sol.customer_supply.get(c_id, 0) <= 1e-9:  # Provera da li je nula (sa tolerancijom)
+                        sol.customer_supply.pop(c_id, None)
+
                 sol.facility_used_capacity.pop(f_id, None)
                 sol.facilities_open.discard(f_id)
 
+
         elif ls_type == "LS2":
+
             # ostavi fabrike otvorene, ukloni do 50% potražnje kupaca
+
             facs_to_modify = rng.sample(open_facs, min(num_to_remove, len(open_facs)))
+
             for f_id in facs_to_modify:
-                assigned_customers = sol.get_assigned_customers_for_facility(f_id)
-                for c_id in assigned_customers:
+                assignments_to_modify = [(c_id, f_id) for (c_id, f_id), amt in sol.assignments.items() if
+                                         f_id == f_id and amt > 0]
+                for c_id, f_id in assignments_to_modify:
                     amt = sol.assignments[(c_id, f_id)]
                     remove_amt = amt * rng.uniform(0, 0.5)
                     sol.assignments[(c_id, f_id)] -= remove_amt
-                    sol.customer_supply[c_id] -= remove_amt
+                    if sol.assignments[(c_id, f_id)] <= 1e-9:
+                        sol.assignments.pop((c_id, f_id))
+                    sol.customer_supply[c_id] = sol.customer_supply.get(c_id, 0) - remove_amt
+                    if sol.customer_supply.get(c_id, 0) <= 1e-9:
+                        sol.customer_supply.pop(c_id, None)
                     sol.facility_used_capacity[f_id] -= remove_amt
 
+
         elif ls_type == "LS3":
+
             # potpuno ukloni nekoliko kupaca
+
             all_customers = [c.id for c in inst.customers]
             custs_to_remove = rng.sample(
                 all_customers, max(1, int(len(all_customers) * rng.uniform(*destruction_pct)))
             )
+
             for c_id in custs_to_remove:
+                sol.customer_supply.pop(c_id, None)
                 for f_id in list(sol.facilities_open):
                     amt = sol.assignments.pop((c_id, f_id), 0)
-                    sol.customer_supply[c_id] -= amt
                     if f_id in sol.facility_used_capacity:
                         sol.facility_used_capacity[f_id] -= amt
-                        if sol.facility_used_capacity[f_id] <= 0:
-                            sol.facility_used_capacity.pop(f_id)
+                        if sol.facility_used_capacity[f_id] <= 1e-9:
+                            sol.facility_used_capacity.pop(f_id, None)
                             sol.facilities_open.discard(f_id)
 
         # -------------------
