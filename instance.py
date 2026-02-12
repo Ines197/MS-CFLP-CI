@@ -15,56 +15,75 @@ class Instance:
         self.facilities.reset()
         self.customers.reset()
 
+
+import re
+
+
 def parse_instance(filename):
     with open(filename, "r") as f:
         text = f.read()
 
-    # Extract counts
-    n_fac = int(re.search(r"Warehouses\s*=\s*(\d+);", text).group(1))
-    n_cust = int(re.search(r"Stores\s*=\s*(\d+);", text).group(1))
+    def safe_search(pattern, content, name):
+        match = re.search(pattern, content, re.DOTALL)
+        if not match:
+            # Instead of crashing, we raise a helpful error or return empty
+            print(f"[WARNING] Could not find {name} in {filename}")
+            return None
+        return match.group(1)
 
-    # Parse arrays
-    capacity = list(map(int, re.search(r"Capacity\s*=\s*\[(.*?)\];", text).group(1).split(",")))
-    fixed_cost = list(map(int, re.search(r"FixedCost\s*=\s*\[(.*?)\];", text).group(1).split(",")))
-    demand = list(map(int, re.search(r"Goods\s*=\s*\[(.*?)\];", text).group(1).split(",")))
+    # 1. Extract counts
+    n_fac_match = re.search(r"Warehouses\s*=\s*(\d+);", text)
+    n_cust_match = re.search(r"Stores\s*=\s*(\d+);", text)
 
-    # Parse SupplyCost block (matrix)
-    supply_text = re.search(r"SupplyCost\s*=\s*\[\|(.*?)\|\];", text, re.DOTALL).group(1)
+    if not n_fac_match or not n_cust_match:
+        raise ValueError(f"Missing Warehouse/Store counts in {filename}")
+
+    n_fac = int(n_fac_match.group(1))
+    n_cust = int(n_cust_match.group(1))
+
+    # 2. Parse arrays (Added \s* for safety)
+    capacity = list(map(int, safe_search(r"Capacity\s*=\s*\[(.*?)\]\s*;", text, "Capacity").split(",")))
+    fixed_cost = list(map(int, safe_search(r"FixedCost\s*=\s*\[(.*?)\]\s*;", text, "FixedCost").split(",")))
+    demand = list(map(int, safe_search(r"Goods\s*=\s*\[(.*?)\]\s*;", text, "Goods").split(",")))
+
+    # 3. Parse SupplyCost block (matrix)
+    # Updated pattern to handle whitespace like | ];
+    supply_text = safe_search(r"SupplyCost\s*=\s*\[\|(.*?)\|\s*\]\s*;", text, "SupplyCost")
     rows = [row.strip(" |") for row in supply_text.strip().splitlines()]
     supply_matrix = [list(map(int, row.split(","))) for row in rows]
 
-    # Parse incompatibilities
-    incomp_text = re.search(r"IncompatiblePairs\s*=\s*\[\|(.*?)\|\];", text, re.DOTALL).group(1)
-    pairs = re.findall(r"(\d+),\s*(\d+)", incomp_text)
-    # convert to 0-based indices
-    incompatibilities = set()
-    for a, b in pairs:
-        a, b = int(a) - 1, int(b) - 1
-        incompatibilities.add((a, b))
-        incompatibilities.add((b, a))
+    # 4. Parse incompatibilities (The 2.1M pairs block)
+    # This regex is now flexible with whitespaces
+    incomp_text = safe_search(r"IncompatiblePairs\s*=\s*\[\|(.*?)\|\s*\]\s*;", text, "IncompatiblePairs")
 
-    # Build customers
+    incompatibilities = set()
+    if incomp_text:
+        # Using finditer is more memory-efficient for 2 million entries
+        pairs = re.finditer(r"(\d+),\s*(\d+)", incomp_text)
+        for match in pairs:
+            a, b = int(match.group(1)) - 1, int(match.group(2)) - 1
+            incompatibilities.add((a, b))
+            incompatibilities.add((b, a))
+
+    # 5. Build objects
     customers_list = [Customer(i, demand[i]) for i in range(n_cust)]
     customers_wrapper = Customers(customers_list)
 
-    # Build facilities (bez instance)
     facilities_list = [
         Facility(i, capacity[i], fixed_cost[i], customers_wrapper)
         for i in range(n_fac)
     ]
     facilities_wrapper = Facilities(facilities_list)
 
-    # Build shipping cost dictionary
+    # 6. Build shipping cost dictionary
     shipping_costs = {
         (cust_id, fac_id): supply_matrix[cust_id][fac_id]
         for cust_id in range(n_cust)
         for fac_id in range(n_fac)
     }
 
-    # Napravi Instance
     instance_obj = Instance(facilities_wrapper, customers_wrapper, shipping_costs, incompatibilities)
 
-    # Opcionalno: veži instance za svaki facility ako je potrebno
     for f in facilities_wrapper.all():
         f.set_instance(instance_obj)
 

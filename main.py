@@ -7,4 +7,4 @@ if __name__ == "__main__":
     )
 
     # Pokreni i snimi rezultate u novi csv
-    runner.compare_all()
+    runner.run_single_instance("problem_input2",60,"res.csv")

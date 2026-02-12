@@ -53,7 +53,7 @@ class Runner:
                          instance_name: str,
                          time_limit: float = 120.0,
                          include_all_heuristics: bool = True,
-                         output_csv: str = "comparison_results5.csv"):
+                         output_csv: str = "comparison_results6.csv"):
         """
         Runs comparison for a single instance.
 
@@ -94,12 +94,31 @@ class Runner:
         })
 
         # B. Multi Facility
+        # 1. Basic Capacity-Based AOC
         alg_configs.append({
-            'name': "Multi Fac.",
+            'name': "MF Basic",
             'class': GreedyMultiFacilitySolver,
             'method': 'solve_greedy_multiple_facility',
             'kwargs': {},
-            'run_args': {}
+            'run_args': {'mode': 'basic'}
+        })
+
+        # 2. AOC with Global Transport Cost
+        alg_configs.append({
+            'name': "MF Global",
+            'class': GreedyMultiFacilitySolver,
+            'method': 'solve_greedy_multiple_facility',
+            'kwargs': {},
+            'run_args': {'mode': 'global'}
+        })
+
+        # 3. AOC with Local Transport Cost (k=5)
+        alg_configs.append({
+            'name': "MF Local (5)",
+            'class': GreedyMultiFacilitySolver,
+            'method': 'solve_greedy_multiple_facility',
+            'kwargs': {},
+            'run_args': {'mode': 'local', 'k': 5}
         })
 
         # C. Extended Greedy (Mode 1)
@@ -264,6 +283,21 @@ class Runner:
                 writer.writerow(row_data)
 
             writer.writerow([])
+
+    def run_single_instance(self, instance_name: str, time_limit: float = 60.0, output_csv: str = None):
+        if output_csv is None:
+            output_csv = f"results_{instance_name}.csv"
+
+        print(f"\n[INFO] Starting single instance run: {instance_name}")
+
+        self.compare_instance(
+            instance_name=instance_name,
+            time_limit=time_limit,
+            include_all_heuristics=True,
+            output_csv=output_csv
+        )
+
+        print(f"[SUCCESS] Results for {instance_name} saved to {output_csv}")
 
     def compare_all(self, time_limit: float = 100.0, include_all_heuristics: bool = True):
         """Loop through all loaded reference instances."""
