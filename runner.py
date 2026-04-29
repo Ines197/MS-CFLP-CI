@@ -47,7 +47,7 @@ class Runner:
                          time_limit: float = None,
                          iteration_limit: int = None,
                          include_all_heuristics: bool = True,
-                         output_csv: str = "comparison_results_final.csv"):
+                         output_csv: str = "doha_comparison_results.csv"):
 
         filename = f"{self.instances_folder}/{instance_name}.dzn"
         try:
@@ -56,7 +56,7 @@ class Runner:
             print(f"[ERROR] Instance file not found: {filename}")
             return
 
-        num_facilities = getattr(problem, 'num_facilities', 0)
+        num_facilities = len(problem.facilities)
         ref_min, ref_avg = self.reference_results.get(instance_name, (0.0, 0.0))
         tau = self._compute_and_cache_tau(instance_name, problem)
 
@@ -242,7 +242,7 @@ class Runner:
                     time_limit: float = None,
                     iteration_limit: int = None,
                     include_all_heuristics: bool = True,
-                    output_csv: str = "comparison_results_final.csv"):
+                    output_csv: str = "doha_comparison_results.csv"):
 
         for inst in self.reference_results.keys():
             self.compare_instance(
